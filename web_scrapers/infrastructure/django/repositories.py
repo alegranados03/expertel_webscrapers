@@ -1,3 +1,4 @@
+from shared.infrastructure.django.repositories import DjangoFullRepository
 from web_scrapers.domain.entities.models import (
     Account as AccountEntity,
     BillingCycle as BillingCycleEntity,
@@ -20,7 +21,6 @@ from web_scrapers.infrastructure.django.models import (
     Client,
     Workspace,
 )
-from shared.infrastructure.django.repositories import DjangoFullRepository
 
 
 class ClientRepository(DjangoFullRepository[ClientEntity, Client]):

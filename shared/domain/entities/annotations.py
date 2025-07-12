@@ -21,4 +21,4 @@ class Count(Annotation):
         return self.alias
 
     def get_annotation_value(self) -> Any:
-        return self.field 
+        return self.field

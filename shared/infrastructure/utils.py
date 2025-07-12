@@ -7,8 +7,8 @@ from enum import Enum
 from typing import Type
 from urllib import parse
 
-from shared.domain.enums import DataUnit
 from shared.domain.entities.pagination import PaginatedQuerySet, PaginationData, QuerySet
+from shared.domain.enums import DataUnit
 
 
 def unicode_transformed_string(name: str) -> str:

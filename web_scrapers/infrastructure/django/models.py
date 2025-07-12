@@ -24,6 +24,7 @@ class Client(models.Model):
     def __str__(self):
         return self.name
 
+
 class Workspace(models.Model):
     name = models.CharField(max_length=100)
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="workspaces")
@@ -34,6 +35,7 @@ class Workspace(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Carrier(models.Model):
     name = models.CharField(max_length=100, unique=True)

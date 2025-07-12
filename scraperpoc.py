@@ -21,6 +21,7 @@
 # # page.goto("https://www.google.com")
 
 import asyncio
+
 from playwright.async_api import async_playwright
 
 SEARCH_TERMS = ["python", "playwright", "openai", "machine learning", "data science"]
@@ -44,6 +45,7 @@ async def scrape_duckduckgo(context, term):
 
     await context.close()
 
+
 async def main():
     async with async_playwright() as playwright:
         # 🔹 Lanzamos UNA instancia de navegador
@@ -58,6 +60,7 @@ async def main():
         await asyncio.gather(*tasks)
 
         await browser.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

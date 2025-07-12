@@ -43,9 +43,10 @@ class ContextManager(ABC):
 class MonthlyReportsScraper(ABC):
     pass
 
+
 class DailyUsagesScraper(ABC):
     pass
 
+
 class PDFInvoiceScraper(ABC):
     pass
-
