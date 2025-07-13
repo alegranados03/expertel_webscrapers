@@ -5,6 +5,7 @@ class Navigators(str, Enum):
     CHROME = "chrome"
     FIREFOX = "firefox"
     EDGE = "edge"
+    SAFARI = "safari"
 
 
 class CarrierPortalUrls(str, Enum):
