@@ -3,7 +3,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus
+from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus, ScraperJobStatus, ScraperType
 
 
 class Client(BaseModel):
@@ -106,6 +106,29 @@ class BillingCycleDailyUsageFile(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ScraperConfig(BaseModel):
+    id: Optional[int] = None
+    account_id: int
+    credential_id: int
+    carrier_id: int
+    parameters: Optional[dict] = None
+    days_offset: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class ScraperJob(BaseModel):
+    id: Optional[int] = None
+    billing_cycle_id: int
+    scraper_config_id: int
+    status: ScraperJobStatus = ScraperJobStatus.PENDING
+    type: ScraperType = ScraperType.DAILY_USAGE
+    log: Optional[str] = None
+    completed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
 # Filters for each entity
 class ClientFilter(BaseModel):
     id: Optional[int] = None
@@ -176,6 +199,27 @@ class CarrierPortalCredentialFilter(BaseModel):
     id: Optional[int] = None
     client_id: Optional[int] = None
     carrier_id: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ScraperConfigFilter(BaseModel):
+    id: Optional[int] = None
+    account_id: Optional[int] = None
+    credential_id: Optional[int] = None
+    carrier_id: Optional[int] = None
+    days_offset: Optional[int] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ScraperJobFilter(BaseModel):
+    id: Optional[int] = None
+    billing_cycle_id: Optional[int] = None
+    scraper_config_id: Optional[int] = None
+    status: Optional[ScraperJobStatus] = None
+    type: Optional[ScraperType] = None
+    completed_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

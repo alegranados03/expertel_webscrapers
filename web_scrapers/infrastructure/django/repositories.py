@@ -8,6 +8,8 @@ from web_scrapers.domain.entities.models import (
     CarrierPortalCredential as CarrierPortalCredentialEntity,
     CarrierReport as CarrierReportEntity,
     Client as ClientEntity,
+    ScraperConfig as ScraperConfigEntity,
+    ScraperJob as ScraperJobEntity,
     Workspace as WorkspaceEntity,
 )
 from web_scrapers.infrastructure.django.models import (
@@ -19,6 +21,8 @@ from web_scrapers.infrastructure.django.models import (
     CarrierPortalCredential,
     CarrierReport,
     Client,
+    ScraperConfig,
+    ScraperJob,
     Workspace,
 )
 
@@ -246,4 +250,54 @@ class BillingCycleDailyUsageFileRepository(
             billing_cycle_id=entity.billing_cycle_id,
             status=entity.status,
             s3_key=entity.s3_key,
+        )
+
+
+class ScraperConfigRepository(DjangoFullRepository[ScraperConfigEntity, ScraperConfig]):
+    __model__: ScraperConfig = ScraperConfig
+
+    def to_entity(self, model: ScraperConfig) -> ScraperConfigEntity:
+        return ScraperConfigEntity(
+            id=model.pk,
+            account_id=model.account.id,
+            credential_id=model.credential.id,
+            carrier_id=model.carrier.id,
+            parameters=model.parameters,
+            days_offset=model.days_offset,
+        )
+
+    def to_orm_model(self, entity: ScraperConfigEntity) -> ScraperConfig:
+        return ScraperConfig(
+            id=entity.id,
+            account_id=entity.account_id,
+            credential_id=entity.credential_id,
+            carrier_id=entity.carrier_id,
+            parameters=entity.parameters,
+            days_offset=entity.days_offset,
+        )
+
+
+class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
+    __model__: ScraperJob = ScraperJob
+
+    def to_entity(self, model: ScraperJob) -> ScraperJobEntity:
+        return ScraperJobEntity(
+            id=model.pk,
+            billing_cycle_id=model.billing_cycle.id,
+            scraper_config_id=model.scraper_config.id,
+            status=model.status,
+            type=model.type,
+            log=model.log,
+            completed_at=model.completed_at,
+        )
+
+    def to_orm_model(self, entity: ScraperJobEntity) -> ScraperJob:
+        return ScraperJob(
+            id=entity.id,
+            billing_cycle_id=entity.billing_cycle_id,
+            scraper_config_id=entity.scraper_config_id,
+            status=entity.status,
+            type=entity.type,
+            log=entity.log,
+            completed_at=entity.completed_at,
         )

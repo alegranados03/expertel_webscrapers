@@ -27,3 +27,16 @@ class PhoneNumberChoices(models.TextChoices):
     SUSPENDED = "suspended", "Suspended"
     CANCELLED = "cancelled", "Cancelled"
     UNKNOWN = "unknown", "Unknown"
+
+
+class ScraperJobStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    RUNNING = "running", "Running"
+    SUCCESS = "success", "Success"
+    ERROR = "error", "Error"
+
+
+class ScraperType(models.TextChoices):
+    DAILY_USAGE = "daily_usage", "Daily Usage"
+    MONTHLY_REPORTS = "monthly_reports", "Monthly Reports"
+    PDF_INVOICE = "pdf_invoice", "PDF Invoice"

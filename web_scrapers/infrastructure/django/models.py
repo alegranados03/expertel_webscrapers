@@ -132,3 +132,40 @@ class BillingCycleDailyUsageFile(models.Model):
     class Meta:
         db_table = "daily_usage_files"
         managed = False
+
+
+class ScraperConfig(models.Model):
+    account = models.OneToOneField(Account, on_delete=models.CASCADE, related_name="scraper_config")
+    credential = models.ForeignKey(
+        CarrierPortalCredential, on_delete=models.PROTECT, related_name="scraper_configs"
+    )
+    carrier = models.ForeignKey(Carrier, on_delete=models.PROTECT, related_name="scraper_configs")
+    parameters = models.JSONField(default=dict, blank=True)
+    days_offset = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "scraper_configs"
+        managed = False
+
+class ScraperJob(models.Model):
+    billing_cycle = models.ForeignKey(
+        BillingCycle, on_delete=models.CASCADE, related_name="scraper_jobs"
+    )
+    scraper_config = models.ForeignKey(ScraperConfig, on_delete=models.PROTECT, related_name="scraper_jobs")
+    status = models.CharField(
+        max_length=50,
+        choices=ScraperJobStatus.choices,
+        default=ScraperJobStatus.PENDING,
+    )
+    type = models.CharField(
+        max_length=50,
+        choices=ScraperType.choices,
+        default=ScraperType.DAILY_USAGE,
+    )
+    log = models.TextField(blank=True, null=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "scraper_jobs"
+        managed = False
+

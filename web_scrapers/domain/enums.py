@@ -44,3 +44,16 @@ class PhoneNumberStatus(str, Enum):
     SUSPENDED = "suspended"
     CANCELLED = "cancelled"
     UNKNOWN = "unknown"
+
+
+class ScraperJobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    ERROR = "error"
+
+
+class ScraperType(str, Enum):
+    DAILY_USAGE = "daily_usage"
+    MONTHLY_REPORTS = "monthly_reports"
+    PDF_INVOICE = "pdf_invoice"
