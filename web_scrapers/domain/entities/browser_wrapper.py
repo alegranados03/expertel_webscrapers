@@ -74,3 +74,43 @@ class BrowserWrapper(ABC):
     def take_screenshot(self, path: str) -> None:
         """Toma una captura de pantalla."""
         raise NotImplementedError()
+
+    @abstractmethod
+    def wait_for_navigation(self, timeout: int = 30000) -> None:
+        """Espera a que la navegación se complete."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def press_key(self, xpath: str, key: str, timeout: int = 10000) -> None:
+        """Presiona una tecla en un elemento específico."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def hover_element(self, xpath: str, timeout: int = 10000) -> None:
+        """Hace hover sobre un elemento."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def scroll_to_element(self, xpath: str, timeout: int = 10000) -> None:
+        """Hace scroll hasta un elemento específico."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_page_title(self) -> str:
+        """Obtiene el título de la página actual."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def reload_page(self) -> None:
+        """Recarga la página actual."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def go_back(self) -> None:
+        """Navega hacia atrás en el historial."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def go_forward(self) -> None:
+        """Navega hacia adelante en el historial."""
+        raise NotImplementedError()

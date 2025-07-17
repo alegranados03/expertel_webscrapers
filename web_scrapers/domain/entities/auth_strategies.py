@@ -45,7 +45,7 @@ class AuthBaseStrategy(ABC):
 
     def _perform_generic_login(self, credentials: Credentials) -> bool:
         try:
-            self.browser_wrapper.goto(credentials.login_url)
+            self.browser_wrapper.goto(self.get_login_url())
             self.browser_wrapper.wait_for_element(self.get_username_xpath())
             self.browser_wrapper.clear_and_type(self.get_username_xpath(), credentials.username)
             self.browser_wrapper.wait_for_element(self.get_password_xpath())
