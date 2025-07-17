@@ -253,3 +253,4 @@ fabric.properties
 poetry.toml
 
 script_testing/
+web_scrapers/examples/
