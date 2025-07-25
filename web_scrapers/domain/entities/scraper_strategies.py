@@ -7,6 +7,7 @@ from web_scrapers.domain.entities.models import (
     BillingCycle,
     BillingCycleDailyUsageFile,
     BillingCycleFile,
+    FileDownloadInfo,
     ScraperConfig,
 )
 from web_scrapers.domain.entities.session import Credentials
@@ -27,18 +28,6 @@ class ScraperResult:
         self.timestamp = datetime.now()
 
 
-class FileDownloadInfo:
-    def __init__(
-        self, file_id: int, file_name: str, download_url: str, file_path: str, file_size: Optional[int] = None
-    ):
-        self.file_id = file_id  # ID del BillingCycleFile o BillingCycleDailyUsageFile
-        self.file_name = file_name
-        self.download_url = download_url
-        self.file_path = file_path
-        self.file_size = file_size
-        self.download_timestamp = datetime.now()
-
-
 class ScraperBaseStrategy(ABC):
     def __init__(self, browser_wrapper: BrowserWrapper):
         self.browser_wrapper = browser_wrapper
@@ -47,9 +36,18 @@ class ScraperBaseStrategy(ABC):
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         raise NotImplementedError()
 
-    @abstractmethod
-    def get_carrier_name(self) -> str:
-        raise NotImplementedError()
+    def _create_file_mapping(self, downloaded_files: List[FileDownloadInfo]) -> List[Dict[str, Any]]:
+        """Convierte FileDownloadInfo a formato de mapeo requerido para endpoints."""
+        return [
+            {
+                "file_id": file_info.file_id,
+                "file_name": file_info.file_name,
+                "file_path": file_info.file_path,
+                "download_url": file_info.download_url,
+                "download_timestamp": file_info.download_timestamp.isoformat(),
+            }
+            for file_info in downloaded_files
+        ]
 
 
 class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
@@ -64,12 +62,12 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
             if not downloaded_files:
                 return ScraperResult(False, error="No se pudieron descargar los archivos")
 
-            upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
-            if not upload_result:
-                return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
+            # upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
+            # if not upload_result:
+            #     return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", [f.__dict__ for f in downloaded_files]
+                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
@@ -109,7 +107,7 @@ class DailyUsageScraperStrategy(ScraperBaseStrategy):
                 return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", [f.__dict__ for f in downloaded_files]
+                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
@@ -149,7 +147,7 @@ class PDFInvoiceScraperStrategy(ScraperBaseStrategy):
                 return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", [f.__dict__ for f in downloaded_files]
+                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:

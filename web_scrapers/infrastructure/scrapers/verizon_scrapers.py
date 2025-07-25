@@ -15,9 +15,6 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
 
-    def get_carrier_name(self) -> str:
-        return "VERIZON"
-
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         try:
 
@@ -80,9 +77,6 @@ class VerizonDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
-
-    def get_carrier_name(self) -> str:
-        return "VERIZON"
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         try:

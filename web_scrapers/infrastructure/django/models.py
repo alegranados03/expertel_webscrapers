@@ -134,6 +134,18 @@ class BillingCycleDailyUsageFile(models.Model):
         managed = False
 
 
+class BillingCyclePDFFile(models.Model):
+    billing_cycle = models.ForeignKey(BillingCycle, on_delete=models.PROTECT, related_name="pdf_files")
+    status = models.CharField(choices=FileStatusChoices.choices, default=FileStatusChoices.TO_BE_FETCHED)
+    status_comment = models.CharField(max_length=300, blank=True, null=True)
+    s3_key = models.CharField(max_length=300, blank=True, null=True)
+    pdf_type = models.CharField(max_length=50, blank=True, null=True)  # 'invoice', 'statement', etc.
+
+    class Meta:
+        db_table = "billing_cycle_pdf_files"
+        managed = False
+
+
 class ScraperConfig(models.Model):
     account = models.OneToOneField(Account, on_delete=models.CASCADE, related_name="scraper_config")
     credential = models.ForeignKey(CarrierPortalCredential, on_delete=models.PROTECT, related_name="scraper_configs")

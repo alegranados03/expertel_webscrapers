@@ -1,3 +1,4 @@
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -46,12 +47,21 @@ class AuthBaseStrategy(ABC):
     def _perform_generic_login(self, credentials: Credentials) -> bool:
         try:
             self.browser_wrapper.goto(self.get_login_url())
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)  # Esperar 3 segundos para estabilización
+
             self.browser_wrapper.wait_for_element(self.get_username_xpath())
             self.browser_wrapper.clear_and_type(self.get_username_xpath(), credentials.username)
+            time.sleep(1)  # Pequeña pausa entre campos
+
             self.browser_wrapper.wait_for_element(self.get_password_xpath())
             self.browser_wrapper.clear_and_type(self.get_password_xpath(), credentials.password)
+            time.sleep(1)  # Pequeña pausa antes del clic
+
             self.browser_wrapper.click_element(self.get_login_button_xpath())
             self.browser_wrapper.wait_for_page_load()
+            time.sleep(10)  # Esperar 10 segundos para que la página se estabilice
+
             return self.is_logged_in()
 
         except Exception as e:
@@ -64,6 +74,7 @@ class AuthBaseStrategy(ABC):
                 return False
             self.browser_wrapper.click_element(self.get_logout_xpath())
             self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)  # Esperar 3 segundos
             return not self.is_logged_in()
 
         except Exception as e:

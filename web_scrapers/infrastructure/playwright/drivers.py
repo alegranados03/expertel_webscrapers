@@ -28,6 +28,7 @@ class BaseNavigatorDriverBuilder(NavigatorDriverBuilder):
             "handle_sighup",
             "viewport_width",
             "viewport_height",
+            "channel",
         }
         for key, value in kwargs.items():
             if key in valid_options:
@@ -87,6 +88,19 @@ class ChromeDriverBuilder(BaseNavigatorDriverBuilder):
         launch_options = self._get_launch_options()
         launch_options["channel"] = Navigators.CHROME.value
 
+        launch_options.setdefault("args", [])
+        launch_options["args"] += [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--disable-dev-shm-usage",
+            "--disable-web-security",
+            "--disable-features=VizDisplayCompositor",
+            "--window-size=1920,1080",
+            "--start-maximized",
+        ]
+
         return self.pw.chromium.launch(**launch_options)
 
     def set_driver_options(self, **kwargs):
@@ -118,9 +132,21 @@ class EdgeDriverBuilder(BaseNavigatorDriverBuilder):
 
     def get_browser(self) -> Browser:
         launch_options = self._get_launch_options()
-        launch_options["channel"] = Navigators.EDGE.value
 
-        return self.pw.chromium.launch(**launch_options)
+        launch_options.setdefault("args", [])
+        launch_options["args"] += [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--disable-dev-shm-usage",
+            "--disable-web-security",
+            "--disable-features=VizDisplayCompositor",
+            "--window-size=1920,1080",
+            "--start-maximized",
+        ]
+
+        return self.pw.chromium.launch(**launch_options, channel="msedge")
 
     def set_driver_options(self, **kwargs):
         super().set_driver_options(**kwargs)
@@ -150,7 +176,15 @@ class FirefoxDriverBuilder(BaseNavigatorDriverBuilder):
     def set_driver_options(self, **kwargs):
         super().set_driver_options(**kwargs)
 
-        firefox_prefs = {}
+        firefox_prefs = {
+            "dom.webdriver.enabled": False,
+            "useAutomationExtension": False,
+            "media.peerconnection.enabled": False,
+            "privacy.trackingprotection.enabled": True,
+            "webgl.disabled": False,
+            "javascript.enabled": True,
+            "intl.accept_languages": "en-US, en",
+        }
 
         if kwargs.get("disable_images", False):
             firefox_prefs["permissions.default.image"] = 2
@@ -158,11 +192,10 @@ class FirefoxDriverBuilder(BaseNavigatorDriverBuilder):
         if kwargs.get("disable_javascript", False):
             firefox_prefs["javascript.enabled"] = False
 
-        if firefox_prefs:
-            # Firefox usa preferencias en lugar de argumentos
-            if "firefox_user_prefs" not in self.options:
-                self.options["firefox_user_prefs"] = {}
-            self.options["firefox_user_prefs"].update(firefox_prefs)
+        if "firefox_user_prefs" not in self.options:
+            self.options["firefox_user_prefs"] = {}
+
+        self.options["firefox_user_prefs"].update(firefox_prefs)
 
     def _get_launch_options(self) -> Dict[str, Any]:
         """Obtiene opciones específicas para Firefox."""

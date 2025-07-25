@@ -13,6 +13,54 @@ from web_scrapers.infrastructure.playwright.drivers import (
 )
 
 
+def apply_stealth_context(context):
+    context.add_init_script(
+        """
+        // Webdriver
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+
+        // Languages
+        Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en']
+        });
+
+        // Plugins spoof
+        Object.defineProperty(navigator, 'plugins', {
+            get: () => [1, 2, 3],
+        });
+
+        // PluginArray spoof
+        try {
+            const fakePluginArray = {
+                0: 'FakePlugin 1',
+                1: 'FakePlugin 2',
+                2: 'FakePlugin 3',
+                length: 3,
+                item: function(index) { return this[index]; },
+                namedItem: function(name) { return null; },
+                [Symbol.iterator]: function* () {
+                    for (let i = 0; i < this.length; i++) yield this[i];
+                }
+            };
+            Object.setPrototypeOf(fakePluginArray, PluginArray.prototype);
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => fakePluginArray
+            });
+        } catch (e) {}
+
+        // WebGL spoof
+        const getParameter = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function(parameter) {
+            if (parameter === 37445) return 'Intel Inc.'; // UNMASKED_VENDOR_WEBGL
+            if (parameter === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
+            return getParameter.call(this, parameter);
+        };
+    """
+    )
+
+
 class BrowserDriverFactory:
 
     def __init__(self):
@@ -66,8 +114,8 @@ class BrowserDriverFactory:
         return self._browser
 
     def create_context(self, browser: Optional[Browser] = None, **kwargs) -> BrowserContext:
-        if not browser:
-            browser = self.create_browser()
+        if not self._browser:
+            self._browser = self.create_browser()
 
         context_options = {
             "viewport": {
@@ -76,22 +124,21 @@ class BrowserDriverFactory:
             },
             "user_agent": os.getenv("BROWSER_USER_AGENT", None),
             "locale": os.getenv("BROWSER_LOCALE", "en-US"),
-            "timezone_id": os.getenv("BROWSER_TIMEZONE", "America/New_York"),
+            # "timezone_id": os.getenv("BROWSER_TIMEZONE", "America/New_York"),
             "ignore_https_errors": os.getenv("BROWSER_IGNORE_HTTPS_ERRORS", "false").lower() == "true",
         }
 
         context_options = {k: v for k, v in context_options.items() if v is not None}
         context_options.update(kwargs)
 
-        self._context = browser.new_context(**context_options)
+        self._context = self._browser.new_context(**context_options)
+        apply_stealth_context(self._context)
         return self._context
 
     def create_page(self, context: Optional[BrowserContext] = None) -> Page:
         if not context:
             context = self.create_context()
-
         self._page = context.new_page()
-
         default_timeout = int(os.getenv("BROWSER_DEFAULT_TIMEOUT", "30000"))
         navigation_timeout = int(os.getenv("BROWSER_NAVIGATION_TIMEOUT", "30000"))
 
@@ -107,9 +154,6 @@ class BrowserDriverFactory:
 
     def get_available_browsers(self) -> list[Navigators]:
         return list(self._driver_builders.keys())
-
-    def is_browser_available(self, browser_type: Navigators) -> bool:
-        return browser_type in self._driver_builders
 
     def cleanup(self) -> None:
         if self._page:

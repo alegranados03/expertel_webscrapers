@@ -60,6 +60,7 @@ class BillingCycle(BaseModel):
     end_date: date
     account_id: int
     status: BillingCycleStatus = BillingCycleStatus.OPEN
+    account: Optional["Account"] = None  # Agregado para cargar el objeto Account
 
     model_config = {"from_attributes": True}
 
@@ -102,6 +103,17 @@ class BillingCycleDailyUsageFile(BaseModel):
     billing_cycle_id: int
     status: BillingCycleStatus = BillingCycleStatus.OPEN
     s3_key: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class BillingCyclePDFFile(BaseModel):
+    id: Optional[int] = None
+    billing_cycle_id: int
+    status: FileStatus = FileStatus.TO_BE_FETCHED
+    status_comment: Optional[str] = None
+    s3_key: Optional[str] = None
+    pdf_type: Optional[str] = None  # 'invoice', 'statement', etc.
 
     model_config = {"from_attributes": True}
 
@@ -229,5 +241,15 @@ class BillingCycleDailyUsageFileFilter(BaseModel):
     billing_cycle_id: Optional[int] = None
     status: Optional[BillingCycleStatus] = None
     s3_key: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class BillingCyclePDFFileFilter(BaseModel):
+    id: Optional[int] = None
+    billing_cycle_id: Optional[int] = None
+    status: Optional[FileStatus] = None
+    status_comment: Optional[str] = None
+    pdf_type: Optional[str] = None
 
     model_config = {"from_attributes": True}

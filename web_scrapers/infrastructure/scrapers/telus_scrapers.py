@@ -16,9 +16,6 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
 
-    def get_carrier_name(self) -> str:
-        return "TELUS"
-
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos mensuales en el portal de Telus."""
         try:
@@ -85,9 +82,6 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
 
-    def get_carrier_name(self) -> str:
-        return "TELUS"
-
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos de uso diario en el portal de Telus."""
         try:
@@ -151,9 +145,6 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
-
-    def get_carrier_name(self) -> str:
-        return "TELUS"
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de facturas PDF en el portal de Telus."""

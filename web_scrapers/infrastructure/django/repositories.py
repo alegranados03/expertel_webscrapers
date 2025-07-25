@@ -4,6 +4,7 @@ from web_scrapers.domain.entities.models import (
     BillingCycle as BillingCycleEntity,
     BillingCycleDailyUsageFile as BillingCycleDailyUsageFileEntity,
     BillingCycleFile as BillingCycleFileEntity,
+    BillingCyclePDFFile as BillingCyclePDFFileEntity,
     Carrier as CarrierEntity,
     CarrierPortalCredential as CarrierPortalCredentialEntity,
     CarrierReport as CarrierReportEntity,
@@ -17,6 +18,7 @@ from web_scrapers.infrastructure.django.models import (
     BillingCycle,
     BillingCycleDailyUsageFile,
     BillingCycleFile,
+    BillingCyclePDFFile,
     Carrier,
     CarrierPortalCredential,
     CarrierReport,
@@ -300,4 +302,28 @@ class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
             type=entity.type,
             log=entity.log,
             completed_at=entity.completed_at,
+        )
+
+
+class BillingCyclePDFFileRepository(DjangoFullRepository[BillingCyclePDFFileEntity, BillingCyclePDFFile]):
+    __model__: BillingCyclePDFFile = BillingCyclePDFFile
+
+    def to_entity(self, model: BillingCyclePDFFile) -> BillingCyclePDFFileEntity:
+        return BillingCyclePDFFileEntity(
+            id=model.pk,
+            billing_cycle_id=model.billing_cycle.id,
+            status=model.status,
+            status_comment=model.status_comment,
+            s3_key=model.s3_key,
+            pdf_type=model.pdf_type,
+        )
+
+    def to_orm_model(self, entity: BillingCyclePDFFileEntity) -> BillingCyclePDFFile:
+        return BillingCyclePDFFile(
+            id=entity.id,
+            billing_cycle_id=entity.billing_cycle_id,
+            status=entity.status,
+            status_comment=entity.status_comment,
+            s3_key=entity.s3_key,
+            pdf_type=entity.pdf_type,
         )

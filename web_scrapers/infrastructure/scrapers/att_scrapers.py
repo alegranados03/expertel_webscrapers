@@ -16,9 +16,6 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
 
-    def get_carrier_name(self) -> str:
-        return "ATT"
-
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos mensuales en el portal de AT&T."""
         try:
@@ -87,9 +84,6 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
 
-    def get_carrier_name(self) -> str:
-        return "ATT"
-
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos de uso diario en el portal de AT&T."""
         try:
@@ -155,9 +149,6 @@ class ATTPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
-
-    def get_carrier_name(self) -> str:
-        return "ATT"
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de facturas PDF en el portal de AT&T."""

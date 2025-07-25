@@ -114,3 +114,33 @@ class BrowserWrapper(ABC):
     def go_forward(self) -> None:
         """Navega hacia adelante en el historial."""
         raise NotImplementedError()
+
+    @abstractmethod
+    def wait_for_new_tab(self, timeout: int = 10000) -> None:
+        """Espera a que se abra una nueva pestaña."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def switch_to_new_tab(self) -> None:
+        """Cambia a la nueva pestaña abierta."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def close_current_tab(self) -> None:
+        """Cierra la pestaña actual."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def switch_to_previous_tab(self) -> None:
+        """Regresa a la pestaña anterior."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def switch_to_tab_by_index(self, index: int) -> None:
+        """Cambia a una pestaña específica por índice."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_tab_count(self) -> int:
+        """Obtiene el número de pestañas abiertas."""
+        raise NotImplementedError()

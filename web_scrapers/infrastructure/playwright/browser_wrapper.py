@@ -1,3 +1,5 @@
+import time
+
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -91,3 +93,57 @@ class PlaywrightWrapper(BrowserWrapper):
 
     def go_forward(self) -> None:
         self.page.go_forward()
+
+    def wait_for_new_tab(self, timeout: int = 10000) -> None:
+        """Espera a que se abra una nueva pestaña."""
+        initial_tab_count = len(self.page.context.pages)
+
+        # Esperar hasta que se abra una nueva pestaña
+        start_time = time.time()
+        while len(self.page.context.pages) <= initial_tab_count:
+            if time.time() - start_time > timeout / 1000:
+                # Si no se abrió una nueva pestaña, verificar si estamos en la misma página
+                # o si la página actual cambió (en lugar de abrir una nueva pestaña)
+                current_url = self.page.url
+                if "e-report" in current_url.lower() or "reports" in current_url.lower():
+                    # Parece que se abrió en la misma pestaña, no necesitamos cambiar
+                    return
+                else:
+                    raise TimeoutError(f"No se abrió una nueva pestaña en {timeout}ms")
+            time.sleep(0.1)
+
+    def switch_to_new_tab(self) -> None:
+        """Cambia a la nueva pestaña abierta."""
+        pages = self.page.context.pages
+
+        if len(pages) > 1:
+            # Cambiar a la última pestaña (la más reciente)
+            self.page = pages[-1]
+            self.page.bring_to_front()
+
+    def close_current_tab(self) -> None:
+        """Cierra la pestaña actual."""
+        self.page.close()
+
+    def switch_to_previous_tab(self) -> None:
+        """Regresa a la pestaña anterior."""
+        pages = self.page.context.pages
+
+        if len(pages) > 1:
+            # Cambiar a la penúltima pestaña (la anterior)
+            self.page = pages[-2]
+            self.page.bring_to_front()
+
+    def switch_to_tab_by_index(self, index: int) -> None:
+        """Cambia a una pestaña específica por índice."""
+        pages = self.page.context.pages
+
+        if 0 <= index < len(pages):
+            self.page = pages[index]
+            self.page.bring_to_front()
+        else:
+            raise ValueError(f"Índice de pestaña {index} fuera de rango. Hay {len(pages)} pestañas disponibles.")
+
+    def get_tab_count(self) -> int:
+        """Obtiene el número de pestañas abiertas."""
+        return len(self.page.context.pages)

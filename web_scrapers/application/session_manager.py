@@ -1,3 +1,4 @@
+import time
 from datetime import datetime
 from typing import Dict, Optional, Type
 
@@ -40,7 +41,8 @@ class SessionManager:
         self._page = None
 
     def is_logged_in(self) -> bool:
-        return self.session_state.is_logged_in()
+        # Usar la lógica mejorada de refresh_session_status
+        return self.refresh_session_status()
 
     def get_current_carrier(self) -> Optional[Carrier]:
         return self.session_state.carrier
@@ -51,21 +53,20 @@ class SessionManager:
     def get_session_state(self) -> SessionState:
         return self.session_state
 
-    def get_current_url(self) -> Optional[str]:
-        if self._browser_wrapper:
-            return self._browser_wrapper.get_current_url()
-        return self.session_state.current_url
-
     def refresh_session_status(self) -> bool:
         try:
             if not self._current_auth_strategy:
                 return False
 
+            # Verificar si hay elementos de login visibles en la pantalla
             is_active = self._current_auth_strategy.is_logged_in()
 
-            if not is_active and self.session_state.is_logged_in():
-                self.session_state.set_logged_out()
-                self._current_auth_strategy = None
+            # Si no hay elementos visibles y hay sesión activa, cerrar sesión
+            if not is_active:
+                if self.session_state.is_logged_in():
+                    self.session_state.set_logged_out()
+                    self._current_auth_strategy = None
+                return False
 
             return is_active
 
@@ -104,7 +105,15 @@ class SessionManager:
 
     def login(self, credentials: Credentials) -> bool:
         try:
-            self.session_state.set_logging_in()
+            if self.session_state.is_logged_in():
+                if (
+                    self.session_state.carrier == credentials.carrier
+                    and self.session_state.credentials
+                    and self.session_state.credentials.id == credentials.id
+                ):
+                    return True
+                self.logout()
+
             auth_strategy_class = self._auth_strategies.get(credentials.carrier)
             if not auth_strategy_class:
                 error_msg = f"No auth strategy for carrier: {credentials.carrier}"
@@ -131,8 +140,6 @@ class SessionManager:
             if not self.session_state.is_logged_in():
                 return True
 
-            self.session_state.set_logging_out()
-
             if not self._current_auth_strategy:
                 self.session_state.set_logged_out()
                 return True
@@ -144,7 +151,6 @@ class SessionManager:
                 self._current_auth_strategy = None
                 return True
             else:
-                # Error en el logout
                 error_msg = "Error al hacer logout"
                 self.session_state.set_error(error_msg)
                 return False
@@ -174,9 +180,14 @@ class SessionManager:
             self._browser = None
 
     def clear_error(self) -> None:
+        """Clears error state and returns to appropriate status based on current auth state."""
         if self.session_state.is_error():
-            self.session_state.status = SessionStatus.LOGGED_OUT
             self.session_state.error_message = None
+            # Determine correct status based on actual authentication state
+            if self._current_auth_strategy and self._current_auth_strategy.is_logged_in():
+                self.session_state.status = SessionStatus.LOGGED_IN
+            else:
+                self.session_state.status = SessionStatus.LOGGED_OUT
 
     def close_all_pages_and_open_new(self):
         if self._context:

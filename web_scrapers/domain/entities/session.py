@@ -7,9 +7,7 @@ from pydantic import BaseModel
 
 class SessionStatus(str, Enum):
     LOGGED_OUT = "logged_out"
-    LOGGING_IN = "logging_in"
     LOGGED_IN = "logged_in"
-    LOGGING_OUT = "logging_out"
     ERROR = "error"
 
 
@@ -61,11 +59,3 @@ class SessionState(BaseModel):
     def set_error(self, error_message: str) -> None:
         self.status = SessionStatus.ERROR
         self.error_message = error_message
-
-    def set_logging_in(self) -> None:
-        self.status = SessionStatus.LOGGING_IN
-        self.error_message = None
-
-    def set_logging_out(self) -> None:
-        self.status = SessionStatus.LOGGING_OUT
-        self.error_message = None
