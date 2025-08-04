@@ -1,9 +1,24 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
 from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus, ScraperJobStatus, ScraperType
+
+
+class FileDownloadInfo(BaseModel):
+    """Información sobre un archivo descargado por un scraper."""
+
+    file_id: int
+    file_name: str
+    download_url: str
+    file_path: str
+    download_timestamp: Optional[datetime] = None
+    billing_cycle_file: Optional["BillingCycleFile"] = None  # Mapeo al BillingCycleFile correspondiente
+    daily_usage_file: Optional["BillingCycleDailyUsageFile"] = None  # Mapeo al BillingCycleDailyUsageFile correspondiente
+    pdf_file: Optional["BillingCyclePDFFile"] = None  # Mapeo al BillingCyclePDFFile correspondiente
+
+    model_config = {"from_attributes": True}
 
 
 class Client(BaseModel):
@@ -60,7 +75,11 @@ class BillingCycle(BaseModel):
     end_date: date
     account_id: int
     status: BillingCycleStatus = BillingCycleStatus.OPEN
-    account: Optional["Account"] = None  # Agregado para cargar el objeto Account
+    account: Optional["Account"] = None
+    billing_cycle_files: Optional[List["BillingCycleFile"]] = []
+    daily_usage_files: Optional[List["BillingCycleDailyUsageFile"]] = []
+    pdf_files: Optional[List["BillingCyclePDFFile"]] = []
+    scraper_jobs: Optional[List["ScraperJob"]] = []
 
     model_config = {"from_attributes": True}
 
@@ -83,6 +102,7 @@ class BillingCycleFile(BaseModel):
     status: FileStatus = FileStatus.TO_BE_FETCHED
     status_comment: Optional[str] = None
     s3_key: Optional[str] = None
+    carrier_report: Optional["CarrierReport"] = None
 
     model_config = {"from_attributes": True}
 

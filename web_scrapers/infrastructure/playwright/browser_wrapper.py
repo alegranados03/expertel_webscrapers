@@ -1,5 +1,5 @@
 import time
-
+import os
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -30,14 +30,30 @@ class PlaywrightWrapper(BrowserWrapper):
 
     def clear_and_type(self, xpath: str, text: str, timeout: int = 10000) -> None:
         self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
+        locator = self.page.locator(f"xpath={xpath}")
+        locator.focus()
+        locator.dispatch_event("keydown", {"key": text[0]})
+        locator.dispatch_event("keyup", {"key": text[0]})
         self.page.fill(f"xpath={xpath}", text)
 
     def select_dropdown_option(self, xpath: str, option_text: str, timeout: int = 10000) -> None:
         self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
+        options = self.page.locator(f"xpath={xpath} >> option").all()
+        print("Available options in dropdown:")
+        for option in options:
+            text = option.inner_text()
+            val = option.get_attribute("value")
+            print(f"  Texto: {text} | Valor: {val}")
         self.page.select_option(f"xpath={xpath}", label=option_text)
 
     def select_dropdown_by_value(self, xpath: str, value: str, timeout: int = 10000) -> None:
         self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
+        options = self.page.locator(f"xpath={xpath} >> option").all()
+        print("Available options in dropdown:")
+        for option in options:
+            text = option.inner_text()
+            val = option.get_attribute("value")
+            print(f"  Texto: {text} | Valor: {val}")
         self.page.select_option(f"xpath={xpath}", value=value)
 
     def get_text(self, xpath: str, timeout: int = 10000) -> str:
@@ -95,55 +111,163 @@ class PlaywrightWrapper(BrowserWrapper):
         self.page.go_forward()
 
     def wait_for_new_tab(self, timeout: int = 10000) -> None:
-        """Espera a que se abra una nueva pestaña."""
-        initial_tab_count = len(self.page.context.pages)
-
-        # Esperar hasta que se abra una nueva pestaña
-        start_time = time.time()
-        while len(self.page.context.pages) <= initial_tab_count:
-            if time.time() - start_time > timeout / 1000:
-                # Si no se abrió una nueva pestaña, verificar si estamos en la misma página
-                # o si la página actual cambió (en lugar de abrir una nueva pestaña)
-                current_url = self.page.url
-                if "e-report" in current_url.lower() or "reports" in current_url.lower():
-                    # Parece que se abrió en la misma pestaña, no necesitamos cambiar
-                    return
-                else:
-                    raise TimeoutError(f"No se abrió una nueva pestaña en {timeout}ms")
-            time.sleep(0.1)
+        raise NotImplementedError
+        # initial_tab_count = len(self.page.context.pages)
+        # print(f"[DETECT] tabulada: {initial_tab_count}")
+        # start_time = time.time()
+        # while len(self.page.context.pages) <= initial_tab_count:
+        #     if time.time() - start_time > timeout / 1000:
+        #         raise TimeoutError(f"No se abrió una nueva pestaña en {timeout}ms")
+        #     time.sleep(0.1)
 
     def switch_to_new_tab(self) -> None:
-        """Cambia a la nueva pestaña abierta."""
         pages = self.page.context.pages
-
-        if len(pages) > 1:
-            # Cambiar a la última pestaña (la más reciente)
-            self.page = pages[-1]
-            self.page.bring_to_front()
+        print("las pages", pages)
+        for page in reversed(pages):
+            print("page", page.url, "is_closed", page.is_closed())
+            if not page.is_closed():
+                self.page = page
+                self.page.bring_to_front()
+                return
+        raise RuntimeError("No hay pestaña nueva disponible o todas están cerradas.")
 
     def close_current_tab(self) -> None:
-        """Cierra la pestaña actual."""
         self.page.close()
 
-    def switch_to_previous_tab(self) -> None:
-        """Regresa a la pestaña anterior."""
-        pages = self.page.context.pages
-
-        if len(pages) > 1:
-            # Cambiar a la penúltima pestaña (la anterior)
-            self.page = pages[-2]
-            self.page.bring_to_front()
-
-    def switch_to_tab_by_index(self, index: int) -> None:
-        """Cambia a una pestaña específica por índice."""
-        pages = self.page.context.pages
-
-        if 0 <= index < len(pages):
-            self.page = pages[index]
+        remaining_pages = [p for p in self.page.context.pages if not p.is_closed()]
+        if remaining_pages:
+            self.page = remaining_pages[-1]  # o la que necesites
             self.page.bring_to_front()
         else:
-            raise ValueError(f"Índice de pestaña {index} fuera de rango. Hay {len(pages)} pestañas disponibles.")
+            raise RuntimeError("Todas las pestañas han sido cerradas.")
+
+    def switch_to_previous_tab(self) -> None:
+        pages = self.page.context.pages
+        current_index = self.get_current_tab_index()
+        previous_index = current_index - 1
+        print("current_index:", current_index, "previous_index:", previous_index, "pages:", len(pages))
+        if 0 <= previous_index < len(pages):
+            page = pages[previous_index]
+            if not page.is_closed():
+                self.page = page
+                self.page.bring_to_front()
+                return
+        raise RuntimeError("No se pudo cambiar a la pestaña anterior.")
+
+    def switch_to_tab_by_index(self, index: int) -> None:
+        pages = self.page.context.pages
+        if 0 <= index < len(pages):
+            page = pages[index]
+            if not page.is_closed():
+                self.page = page
+                self.page.bring_to_front()
+                return
+            else:
+                raise RuntimeError(f"La pestaña en el índice {index} está cerrada.")
+        raise ValueError(f"Índice de pestaña {index} fuera de rango. Hay {len(pages)} pestañas disponibles.")
 
     def get_tab_count(self) -> int:
-        """Obtiene el número de pestañas abiertas."""
         return len(self.page.context.pages)
+
+    def clear_browser_data(
+        self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True
+    ) -> None:
+        try:
+            context = self.page.context
+            if clear_cookies:
+                context.clear_cookies()
+            if clear_storage or clear_cache:
+                self.page.evaluate(
+                    """
+                    () => {
+                        if (typeof(Storage) !== "undefined" && localStorage) {
+                            localStorage.clear();
+                        }
+                        if (typeof(Storage) !== "undefined" && sessionStorage) {
+                            sessionStorage.clear();
+                        }
+                    }
+                """
+                )
+            print("🧹 Datos del navegador limpiados exitosamente")
+        except Exception as e:
+            print(f"⚠️ Error al limpiar datos del navegador: {e}")
+
+    def close_all_tabs_except_main(self) -> None:
+        try:
+            pages = self.page.context.pages
+            main_page = pages[0] if pages else None
+            for i in range(len(pages) - 1, 0, -1):
+                try:
+                    pages[i].close()
+                except:
+                    pass
+            if main_page and not main_page.is_closed():
+                self.page = main_page
+                self.page.bring_to_front()
+                print(f"🗂️ Cerradas {len(pages) - 1} pestañas, regresado a pestaña principal")
+            else:
+                print("⚠️ No se pudo regresar a la pestaña principal")
+        except Exception as e:
+            print(f"❌ Error al cerrar pestañas: {e}")
+
+    def get_current_tab_index(self) -> int:
+        try:
+            pages = self.page.context.pages
+            for i, page in enumerate(pages):
+                if page == self.page:
+                    return i
+            return -1
+        except:
+            return -1
+
+    def change_button_attribute(self, xpath: str, attribute: str, value: str) -> None:
+        """Cambia cualquier atributo de un botón usando JavaScript."""
+        self.page.evaluate(
+            f"""
+            () => {{
+                const el = document.evaluate("{xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                if (el) {{
+                    el.setAttribute("{attribute}", "{value}");
+                    if ("{attribute}" === "disabled" && "{value}" === "false") {{
+                        el.disabled = false;
+                    }}
+                }}
+            }}
+        """
+        )
+
+    def expect_download_and_click(self, xpath: str, timeout: int = 30000) -> str | None:
+        """Hace clic en un elemento esperando una descarga y retorna la ruta del archivo descargado."""
+        try:
+            with self.page.expect_download(timeout=timeout) as download_info:
+                self.page.click(f"xpath={xpath}")
+
+            download = download_info.value
+            # Obtener el path sugerido del archivo
+            suggested_filename = download.suggested_filename
+
+            # Guardar el archivo en el directorio de descargas
+
+            downloads_dir = os.path.abspath("downloads")
+            os.makedirs(downloads_dir, exist_ok=True)
+            file_path = os.path.join(downloads_dir, suggested_filename)
+
+            download.save_as(file_path)
+            print(f"📥 Archivo descargado: {file_path}")
+            return file_path
+
+        except Exception as e:
+            print(f"❌ Error en descarga: {str(e)}")
+            return None
+
+    def click_and_switch_to_new_tab(self, xpath: str, timeout: int = 10000) -> None:
+        """Hace clic en un enlace que abre una nueva pestaña y cambia el foco automáticamente."""
+        with self.page.context.expect_page(timeout=timeout) as new_page_info:
+            self.page.click(f"xpath={xpath}")
+
+        print(self.page.context.pages)
+        new_tab = new_page_info.value
+        new_tab.bring_to_front()
+        self.page = new_tab
+        self.page.wait_for_load_state("load")

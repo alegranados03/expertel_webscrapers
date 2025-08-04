@@ -144,3 +144,35 @@ class BrowserWrapper(ABC):
     def get_tab_count(self) -> int:
         """Obtiene el número de pestañas abiertas."""
         raise NotImplementedError()
+
+    @abstractmethod
+    def clear_browser_data(
+        self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True
+    ) -> None:
+        """Limpia datos del navegador para resolver problemas de caché."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def close_all_tabs_except_main(self) -> None:
+        """Cierra todas las pestañas excepto la principal (índice 0)."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_current_tab_index(self) -> int:
+        """Obtiene el índice de la pestaña actual."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def change_button_attribute(self, xpath: str, attribute: str, value: str) -> None:
+        """Cambia cualquier atributo de un botón usando JavaScript."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def expect_download_and_click(self, xpath: str, timeout: int = 30000) -> Optional[str]:
+        """Hace clic en un elemento esperando una descarga y retorna la ruta del archivo descargado."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def click_and_switch_to_new_tab(self, xpath: str, timeout: int = 10000) -> None:
+        """Hace clic en un enlace que abre una nueva pestaña y cambia el foco automáticamente."""
+        raise NotImplementedError()

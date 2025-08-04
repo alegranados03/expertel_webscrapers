@@ -34,38 +34,71 @@ This is a **Clean Architecture** Django project for web scraping telecommunicati
 - `entities/models.py`: Pydantic models for business entities (Client, Account, BillingCycle, ScraperJob, etc.)
 - `entities/auth_strategies.py`: Abstract base strategy for carrier authentication
 - `entities/scraper_strategies.py`: Abstract base strategies for different scraping tasks (MonthlyReports, DailyUsage, PDFInvoice)
-- `entities/browser_wrapper.py`: Browser abstraction interface
+- `entities/browser_wrapper.py`: Browser abstraction interface with tab management and cache clearing
 - `entities/session.py`: Session state management entities
+- `entities/scraper_factory.py`: Factory pattern for creating carrier-specific scrapers
 - `enums.py`: Business enums (AccountType, ScraperType, SessionStatus, etc.)
 
 **Application Layer** (`web_scrapers/application/`):
-- `session_manager.py`: Core service orchestrating browser sessions and authentication strategies
+- `session_manager.py`: Core service orchestrating browser sessions and authentication strategies with persistent session reuse
 - `cqrs/commands/`: Command handlers for scraping operations
 
 **Infrastructure Layer** (`web_scrapers/infrastructure/`):
 - `django/`: Django-specific implementations (models, repositories, admin)
 - `playwright/`: Playwright browser automation implementations
-  - `auth_strategies.py`: Concrete authentication strategies per carrier
+  - `auth_strategies.py`: Concrete authentication strategies per carrier with 2FA support
   - `browser_factory.py`: Browser instance management
-  - `browser_wrapper.py`: Playwright implementation of browser abstraction
+  - `browser_wrapper.py`: Playwright implementation with tab management and cache clearing capabilities
 - `scrapers/`: Carrier-specific scraper implementations (bell_scrapers.py, att_scrapers.py, etc.)
 
 ### Key Patterns
 
 **Strategy Pattern**: Used for both authentication (`AuthBaseStrategy`) and scraping (`ScraperBaseStrategy`) to support multiple carriers with different portal interfaces.
 
-**Session Management**: `SessionManager` class handles browser lifecycle, authentication state, and carrier switching with proper cleanup.
+**Factory Pattern**: `ScraperStrategyFactory` creates appropriate scraper instances based on carrier and scraper type combinations.
 
-**Browser Abstraction**: `BrowserWrapper` interface allows swapping browser implementations (currently Playwright, but designed for extensibility).
+**Template Method Pattern**: Base scraper strategies define the execution flow while concrete implementations provide carrier-specific logic.
+
+**Session Management**: `SessionManager` class handles browser lifecycle, authentication state, and carrier switching with proper cleanup. Maintains persistent sessions across multiple scraper executions for efficiency.
+
+**Browser Abstraction**: `BrowserWrapper` interface allows swapping browser implementations (currently Playwright, but designed for extensibility). Includes advanced tab management and cache clearing for error recovery.
 
 **CQRS**: Command handlers in `application/cqrs/` separate read/write operations.
+
+### System Flow and Execution
+
+**Main Execution Flow** (see `SISTEMA_SCRAPERS_FLUJO_COMPLETO.md` for detailed flow):
+1. **Initialization**: Create entities, SessionManager, and ScraperFactory
+2. **Session Management**: Check existing session, authenticate if needed, reuse when possible
+3. **Scraper Execution**: Factory creates appropriate strategy, executes with template method pattern
+4. **Error Recovery**: Automatic cache clearing and re-authentication for specific error cases
+5. **Cleanup**: Maintains session for next task, final cleanup only at end
+
+**Session Reuse Logic**:
+- Same carrier + same credentials = Reuse existing session
+- Same carrier + different credentials = Logout and re-login
+- Different carrier = Logout and login with new carrier
+- Lost session = Automatic re-authentication
 
 ### Carrier Support
 Currently supports: Bell, Telus, Rogers (Canada), AT&T, T-Mobile, Verizon (US). Each carrier has dedicated authentication and scraping strategies.
 
+**Special Bell Implementation**:
+- Advanced cache error detection and recovery
+- Tab management for e-reports functionality
+- Automatic browser data clearing when cache corruption detected
+- Seamless re-authentication after cache recovery
+
+**Special Telus Implementation**:
+- Complex multi-step authentication flow through My Telus portal
+- Advanced report generation with Telus IQ integration
+- Queue monitoring system for long-running report generation
+- Multiple report formats (CSV, Excel) with automatic format selection
+- Sophisticated fallback mechanisms for download operations
+
 ### 2FA SMS Integration
 **Bell Carrier** now supports automatic 2FA handling via SMS:
-- **Webhook System**: `email2fa/sms2fa.py` provides SMS code reception endpoints
+- **Webhook System**: `authenticator_webhook/sms2fa.py` provides SMS code reception endpoints
 - **Detection**: Automatically detects 2FA verification fields after login
 - **SMS Flow**: Selects text message option, requests code, waits for webhook reception
 - **Code Extraction**: Extracts 6-digit codes from SMS messages via regex
@@ -78,7 +111,7 @@ Currently supports: Bell, Telus, Rogers (Canada), AT&T, T-Mobile, Verizon (US). 
 - `GET /status` - Webhook status
 - `GET /health` - Health check
 
-**Usage**: Start webhook (`python email2fa/sms2fa.py`) before running Bell scrapers with 2FA enabled accounts.
+**Usage**: Start webhook (`python authenticator_webhook/sms2fa.py`) before running Bell scrapers with 2FA enabled accounts.
 
 ### File Management
 - Downloads stored in `downloads/` directory
