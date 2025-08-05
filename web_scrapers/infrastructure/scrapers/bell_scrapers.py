@@ -264,7 +264,6 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     print("downloaded_file_path: ", downloaded_file_path)
 
                     if downloaded_file_path:
-                        import os
                         actual_file_name = os.path.basename(downloaded_file_path)
                         print(f"✅ Archivo descargado exitosamente: {actual_file_name}")
                         
@@ -331,19 +330,6 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             print(f"❌ Error general al procesar la tabla de descargas: {e}")
             return downloaded_files
 
-    def _upload_files_to_endpoint(
-        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
-    ) -> bool:
-        """Envía los archivos descargados al endpoint externo."""
-        try:
-            for file_info in files:
-                endpoint_url = f"https://api.expertel.com/billing_cycle_files/{file_info.file_id}/upload"
-                # Aquí iría la lógica real de envío
-                # requests.post(endpoint_url, files={'file': open(file_info.file_path, 'rb')})
-
-            return True
-        except Exception as e:
-            return False
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
@@ -506,19 +492,6 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             print(f"❌ Error al descargar archivo Daily Usage: {str(e)}")
             return downloaded_files
 
-    def _upload_files_to_endpoint(
-        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
-    ) -> bool:
-        """Envía los archivos descargados al endpoint externo."""
-        try:
-            for file_info in files:
-                endpoint_url = f"https://api.expertel.com/daily_usage_files/{file_info.file_id}/upload"
-                # Aquí iría la lógica real de envío
-
-            return True
-
-        except Exception as e:
-            return False
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
@@ -801,19 +774,6 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             print(f"❌ Error al descargar archivo PDF: {str(e)}")
             return downloaded_files
 
-    def _upload_files_to_endpoint(
-        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
-    ) -> bool:
-        """Envía los archivos descargados al endpoint externo."""
-        try:
-            for file_info in files:
-                endpoint_url = f"https://api.expertel.com/billing_cycle_files/{file_info.file_id}/upload"
-                # Aquí iría la lógica real de envío
-
-            return True
-
-        except Exception as e:
-            return False
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
