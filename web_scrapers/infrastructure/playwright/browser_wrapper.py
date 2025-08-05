@@ -104,6 +104,10 @@ class PlaywrightWrapper(BrowserWrapper):
     def reload_page(self) -> None:
         self.page.reload()
 
+    def refresh(self) -> None:
+        """Refresh the current page - alias for reload_page."""
+        self.page.reload()
+
     def go_back(self) -> None:
         self.page.go_back()
 
