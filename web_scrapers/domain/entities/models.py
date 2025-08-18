@@ -7,18 +7,18 @@ from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatu
 
 
 class FileDownloadInfo(BaseModel):
-    """Información sobre un archivo descargado por un scraper."""
+    """Information about a file downloaded by a scraper."""
 
     file_id: int
     file_name: str
     download_url: str
     file_path: str
     download_timestamp: Optional[datetime] = None
-    billing_cycle_file: Optional["BillingCycleFile"] = None  # Mapeo al BillingCycleFile correspondiente
+    billing_cycle_file: Optional["BillingCycleFile"] = None  # Mapping to corresponding BillingCycleFile
     daily_usage_file: Optional["BillingCycleDailyUsageFile"] = (
-        None  # Mapeo al BillingCycleDailyUsageFile correspondiente
+        None  # Mapping to corresponding BillingCycleDailyUsageFile
     )
-    pdf_file: Optional["BillingCyclePDFFile"] = None  # Mapeo al BillingCyclePDFFile correspondiente
+    pdf_file: Optional["BillingCyclePDFFile"] = None  # Mapping to corresponding BillingCyclePDFFile
 
     model_config = {"from_attributes": True}
 
@@ -275,5 +275,48 @@ class BillingCyclePDFFileFilter(BaseModel):
     status: Optional[FileStatus] = None
     status_comment: Optional[str] = None
     pdf_type: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+# Service Response Models
+class ScraperJobCompleteContext(BaseModel):
+    """Complete context for a scraper job execution"""
+
+    scraper_job: ScraperJob
+    scraper_config: ScraperConfig
+    billing_cycle: BillingCycle  # Complete with all files assembled
+    credential: CarrierPortalCredential
+    account: Account
+    carrier: Carrier
+    workspace: Workspace
+    client: Client
+
+    model_config = {"from_attributes": True}
+
+
+class ScraperStatistics(BaseModel):
+    """Statistics about scraper jobs status"""
+
+    timestamp: datetime
+    total_pending: int
+    available_now: int
+    future_scheduled: int
+    null_available_at: int
+
+    model_config = {"from_attributes": True}
+
+
+class FileMappingInfo(BaseModel):
+    """File mapping information for API endpoints"""
+
+    file_id: int
+    file_name: str
+    file_path: str
+    download_url: str
+    billing_cycle_file_id: Optional[int] = None
+    carrier_report_name: Optional[str] = None
+    daily_usage_file_id: Optional[int] = None
+    pdf_file_id: Optional[int] = None
 
     model_config = {"from_attributes": True}

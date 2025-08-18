@@ -1,115 +1,156 @@
 """
-Procesador principal de ScraperJobs con soporte para available_at
+Main ScraperJob processor with available_at support
 """
 
 import os
 
 import django
 
-# Configurar Django
+# Configure Django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from web_scrapers.application.scraper_job_service import ScraperJobService
 from web_scrapers.application.session_manager import SessionManager
 from web_scrapers.domain.entities.scraper_factory import ScraperStrategyFactory
+from web_scrapers.domain.entities.session import Carrier as CarrierEnum, Credentials
 from web_scrapers.domain.enums import ScraperJobStatus
+from web_scrapers.infrastructure.logging_config import get_logger, setup_logging
 
 
 class ScraperJobProcessor:
-    """Procesador principal de ScraperJobs usando clean architecture"""
+    """Main ScraperJob processor using clean architecture"""
 
     def __init__(self):
+        self.logger = get_logger("scraper_job_processor")
         self.scraper_job_service = ScraperJobService()
         self.session_manager = SessionManager()
         self.scraper_factory = ScraperStrategyFactory()
 
     def log_statistics(self) -> None:
-        """Muestra estadísticas de scrapers disponibles"""
+        """Display available scraper statistics"""
         stats = self.scraper_job_service.get_scraper_statistics()
-        print(
-            f"📊 Stats: {stats['available_now']} disponibles ahora, "
-            f"{stats['future_scheduled']} programados para el futuro, "
+        self.logger.info(
+            f"Scraper statistics: {stats['available_now']} available now, "
+            f"{stats['future_scheduled']} scheduled for future, "
             f"{stats['total_pending']} total pending"
         )
 
     def process_scraper_job(self, job_context: dict, job_number: int, total_jobs: int) -> bool:
         """
-        Procesa un único scraper job.
+        Process a single scraper job.
 
         Args:
-            job_context: Contexto completo del job
-            job_number: Número del job actual
-            total_jobs: Total de jobs a procesar
+            job_context: Complete job context
+            job_number: Current job number
+            total_jobs: Total jobs to process
 
         Returns:
-            True si el procesamiento fue exitoso, False en caso contrario
+            True if processing was successful, False otherwise
         """
-        scraper_job = job_context["scraper_job"]
-        scraper_config = job_context["scraper_config"]
-        billing_cycle = job_context["billing_cycle"]
-        credential = job_context["credential"]
-        account = job_context["account"]
-        carrier = job_context["carrier"]
+        # Extract Pydantic entities from complete context model
+        scraper_job = job_context.scraper_job
+        scraper_config = job_context.scraper_config
+        billing_cycle = job_context.billing_cycle  # Complete with files
+        credential = job_context.credential
+        account = job_context.account
+        carrier = job_context.carrier
 
-        print(f"\n🔄 Procesando job {job_number}/{total_jobs}")
-        print(f"   Job ID: {scraper_job.id}")
-        print(f"   Tipo: {scraper_job.type}")
-        print(f"   Carrier: {carrier.name}")
-        print(f"   Account: {account.number}")
-        print(f"   Available at: {scraper_job.available_at}")
+        self.logger.info(f"Processing job {job_number}/{total_jobs}")
+        self.logger.info(f"Job ID: {scraper_job.id}")
+        self.logger.info(f"Type: {scraper_job.type}")
+        self.logger.info(f"Carrier: {carrier.name}")
+        self.logger.info(f"Account: {account.number}")
+        self.logger.info(f"Available at: {scraper_job.available_at}")
 
         try:
-            # Actualizar estado a RUNNING
+            # Update status to RUNNING
             self.scraper_job_service.update_scraper_job_status(
                 scraper_job.id,
                 ScraperJobStatus.RUNNING,
-                f"Iniciando procesamiento - Carrier: {carrier.name}, Tipo: {scraper_job.type}",
+                f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
             )
 
-            # Crear el scraper usando la factory
+            # Convert credential to Credentials entity for scraper execution
+            # Map carrier name to enum
+            carrier_enum_map = {
+                "bell canada": CarrierEnum.BELL,
+                "bell": CarrierEnum.BELL,
+                "telus": CarrierEnum.TELUS,
+                "rogers": CarrierEnum.ROGERS,
+                "at&t": CarrierEnum.ATT,
+                "att": CarrierEnum.ATT,
+                "t-mobile": CarrierEnum.TMOBILE,
+                "tmobile": CarrierEnum.TMOBILE,
+                "verizon": CarrierEnum.VERIZON,
+            }
+
+            carrier_enum = carrier_enum_map.get(carrier.name.lower(), CarrierEnum.BELL)
+            credentials = Credentials(
+                id=credential.id, username=credential.username, password=credential.password, carrier=carrier_enum
+            )
+
+            # Get browser wrapper from session manager
+            browser_wrapper = self.session_manager.get_browser_wrapper()
+            if not browser_wrapper:
+                # Initialize session if needed
+                login_success = self.session_manager.login(credentials)
+                if not login_success:
+                    raise Exception("Failed to login and get browser wrapper")
+                browser_wrapper = self.session_manager.get_browser_wrapper()
+
+            # Create scraper using factory (like in example)
             scraper_strategy = self.scraper_factory.create_scraper(
-                carrier_name=carrier.name.lower(), scraper_type=scraper_job.type
+                carrier=carrier_enum, scraper_type=scraper_job.type, browser_wrapper=browser_wrapper
             )
 
-            print(f"   ✅ Scraper creado: {scraper_strategy.__class__.__name__}")
+            self.logger.info(f"Scraper created successfully: {scraper_strategy.__class__.__name__}")
 
-            # TODO: Ejecutar el scraper real
-            # result = scraper_strategy.execute(scraper_config, billing_cycle, credential)
+            # Execute actual scraper with complete Pydantic structures
+            result = scraper_strategy.execute(scraper_config, billing_cycle, credentials)
 
-            # Por ahora simulamos éxito
-            self.scraper_job_service.update_scraper_job_status(
-                scraper_job.id, ScraperJobStatus.SUCCESS, "Scraper ejecutado exitosamente (simulado)"
-            )
+            if result.success:
+                self.logger.info(f"Scraper executed successfully: {result.message}")
+                self.logger.info(f"Files processed: {len(result.files)}")
+
+                self.scraper_job_service.update_scraper_job_status(
+                    scraper_job.id, ScraperJobStatus.SUCCESS, f"Scraper executed successfully: {result.message}"
+                )
+            else:
+                self.logger.error(f"Scraper execution failed: {result.error}")
+                self.scraper_job_service.update_scraper_job_status(
+                    scraper_job.id, ScraperJobStatus.ERROR, f"Scraper execution failed: {result.error}"
+                )
+                return False
 
             return True
 
         except Exception as e:
-            error_msg = f"Error procesando scraper: {str(e)}"
-            print(f"   ❌ {error_msg}")
+            error_msg = f"Error processing scraper: {str(e)}"
+            self.logger.error(error_msg, exc_info=True)
 
-            # Actualizar estado a ERROR
+            # Update status to ERROR
             self.scraper_job_service.update_scraper_job_status(scraper_job.id, ScraperJobStatus.ERROR, error_msg)
 
             return False
 
     def execute_available_scrapers(self) -> None:
-        """Función principal que obtiene y ejecuta los scrapers disponibles"""
-        print("🔍 Obteniendo scraper jobs disponibles...")
+        """Main function that retrieves and executes available scrapers"""
+        self.logger.info("Fetching available scraper jobs...")
 
-        # Mostrar estadísticas
+        # Display statistics
         self.log_statistics()
 
-        # Obtener jobs disponibles con contexto completo
-        available_jobs = self.scraper_job_service.get_available_jobs_with_context()
+        # Get available jobs with complete context (like scraper_system_example.py)
+        available_jobs = self.scraper_job_service.get_available_jobs_with_complete_context()
 
         if not available_jobs:
-            print("✅ No hay scraper jobs disponibles para ejecutar en este momento.")
+            self.logger.info("No scraper jobs available for execution at this time")
             return
 
-        print(f"🚀 Encontrados {len(available_jobs)} scraper jobs disponibles para ejecutar")
+        self.logger.info(f"Found {len(available_jobs)} scraper jobs available for execution")
 
-        # Procesar cada job
+        # Process each job
         successful_jobs = 0
         failed_jobs = 0
 
@@ -120,23 +161,26 @@ class ScraperJobProcessor:
             else:
                 failed_jobs += 1
 
-        # Resumen final
-        print(f"\n📈 Resumen de ejecución:")
-        print(f"   ✅ Exitosos: {successful_jobs}")
-        print(f"   ❌ Fallidos: {failed_jobs}")
-        print(f"   📊 Total procesados: {len(available_jobs)}")
+        # Final summary
+        self.logger.info("Execution summary:")
+        self.logger.info(f"Successful: {successful_jobs}")
+        self.logger.info(f"Failed: {failed_jobs}")
+        self.logger.info(f"Total processed: {len(available_jobs)}")
 
 
 def main():
-    """Función principal del procesador"""
+    """Main processor function"""
+    # Setup logging
+    setup_logging(log_level="INFO")
+    logger = get_logger("main")
+
     try:
+        logger.info("Starting ScraperJob processor")
         processor = ScraperJobProcessor()
         processor.execute_available_scrapers()
+        logger.info("ScraperJob processor completed successfully")
     except Exception as e:
-        print(f"❌ Error en el procesador principal: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
+        logger.error(f"Error in main processor: {str(e)}", exc_info=True)
 
 
 if __name__ == "__main__":

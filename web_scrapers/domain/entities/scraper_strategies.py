@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 import zipfile
@@ -11,9 +12,11 @@ from web_scrapers.domain.entities.models import (
     BillingCycleDailyUsageFile,
     BillingCycleFile,
     FileDownloadInfo,
+    FileMappingInfo,
     ScraperConfig,
 )
 from web_scrapers.domain.entities.session import Credentials
+from web_scrapers.infrastructure.services.file_upload_service import FileUploadService
 
 
 class ScraperResult:
@@ -21,7 +24,7 @@ class ScraperResult:
         self,
         success: bool,
         message: str = "",
-        files: Optional[List[Dict[str, Any]]] = None,
+        files: Optional[List[FileMappingInfo]] = None,
         error: Optional[str] = None,
     ):
         self.success = success
@@ -34,85 +37,86 @@ class ScraperResult:
 class ScraperBaseStrategy(ABC):
     def __init__(self, browser_wrapper: BrowserWrapper):
         self.browser_wrapper = browser_wrapper
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         raise NotImplementedError()
 
-    def _create_file_mapping(self, downloaded_files: List[FileDownloadInfo]) -> List[Dict[str, Any]]:
-        """Convierte FileDownloadInfo a formato de mapeo requerido para endpoints."""
+    def _create_file_mapping(self, downloaded_files: List[FileDownloadInfo]) -> List[FileMappingInfo]:
+        """Convert FileDownloadInfo to mapping format required for endpoints."""
         return [
-            {
-                "file_id": file_info.file_id,
-                "file_name": file_info.file_name,
-                "file_path": file_info.file_path,
-                "download_url": file_info.download_url,
-                "billing_cycle_file_id": file_info.billing_cycle_file.id if file_info.billing_cycle_file else None,
-                "carrier_report_name": (
+            FileMappingInfo(
+                file_id=file_info.file_id,
+                file_name=file_info.file_name,
+                file_path=file_info.file_path,
+                download_url=file_info.download_url,
+                billing_cycle_file_id=file_info.billing_cycle_file.id if file_info.billing_cycle_file else None,
+                carrier_report_name=(
                     file_info.billing_cycle_file.carrier_report.name
                     if (file_info.billing_cycle_file and file_info.billing_cycle_file.carrier_report)
                     else None
                 ),
-                "daily_usage_file_id": file_info.daily_usage_file.id if file_info.daily_usage_file else None,
-                "pdf_file_id": file_info.pdf_file.id if file_info.pdf_file else None,
-            }
+                daily_usage_file_id=file_info.daily_usage_file.id if file_info.daily_usage_file else None,
+                pdf_file_id=file_info.pdf_file.id if file_info.pdf_file else None,
+            )
             for file_info in downloaded_files
         ]
 
     def _extract_zip_files(self, zip_file_path: str, extract_to_dir: Optional[str] = None) -> List[str]:
         """
-        Extrae archivos de un ZIP y retorna las rutas de todos los archivos extraídos.
+        Extract files from a ZIP and return paths of all extracted files.
 
         Args:
-            zip_file_path: Ruta del archivo ZIP a extraer
-            extract_to_dir: Directorio donde extraer (si no se especifica, usa el directorio del ZIP)
+            zip_file_path: Path of the ZIP file to extract
+            extract_to_dir: Directory to extract to (if not specified, uses ZIP directory)
 
         Returns:
-            Lista de rutas de archivos extraídos
+            List of extracted file paths
         """
         extracted_files = []
         try:
-            # Verificar que el archivo existe y es un ZIP
+            # Verify that file exists and is a ZIP
             if not os.path.exists(zip_file_path):
-                print(f"❌ Archivo ZIP no encontrado: {zip_file_path}")
+                self.logger.error(f"ZIP file not found: {zip_file_path}")
                 return extracted_files
 
             if not zipfile.is_zipfile(zip_file_path):
-                print(f"❌ El archivo no es un ZIP válido: {zip_file_path}")
+                self.logger.error(f"File is not a valid ZIP: {zip_file_path}")
                 return extracted_files
 
-            # Determinar directorio de extracción con UUID único
+            # Determine extraction directory with unique UUID
             if extract_to_dir is None:
                 zip_basename = os.path.splitext(os.path.basename(zip_file_path))[0]
-                unique_id = str(uuid.uuid4())[:8]  # Usar solo primeros 8 caracteres del UUID
+                unique_id = str(uuid.uuid4())[:8]  # Use only first 8 characters of UUID
                 extract_to_dir = os.path.join(os.path.dirname(zip_file_path), f"{zip_basename}_extracted_{unique_id}")
 
-            # Crear directorio de extracción si no existe
+            # Create extraction directory if it doesn't exist
             os.makedirs(extract_to_dir, exist_ok=True)
 
-            print(f"📦 Extrayendo ZIP: {os.path.basename(zip_file_path)}")
-            print(f"📁 Directorio de extracción: {extract_to_dir}")
+            self.logger.info(f"Extracting ZIP: {os.path.basename(zip_file_path)}")
+            self.logger.info(f"Extraction directory: {extract_to_dir}")
 
-            # Extraer archivos
+            # Extract files
             with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
                 file_list = zip_ref.namelist()
-                print(f"📋 Elementos en ZIP: {len(file_list)}")
+                self.logger.info(f"Elements in ZIP: {len(file_list)}")
 
                 for file_name in file_list:
-                    # Solo procesar archivos, no directorios
+                    # Only process files, not directories
                     if not file_name.endswith("/"):
-                        # Obtener solo el nombre del archivo (sin ruta de carpetas)
+                        # Get only the filename (without folder path)
                         base_filename = os.path.basename(file_name)
 
-                        # Evitar archivos ocultos o del sistema
+                        # Avoid hidden or system files
                         if base_filename and not base_filename.startswith("."):
-                            # Leer el contenido del archivo del ZIP
+                            # Read file content from ZIP
                             file_content = zip_ref.read(file_name)
 
-                            # Crear ruta de destino en el primer nivel
+                            # Create destination path at first level
                             flattened_file_path = os.path.join(extract_to_dir, base_filename)
 
-                            # Si ya existe un archivo con el mismo nombre, agregar un número
+                            # If file with same name exists, add a number
                             counter = 1
                             original_path = flattened_file_path
                             while os.path.exists(flattened_file_path):
@@ -120,51 +124,49 @@ class ScraperBaseStrategy(ABC):
                                 flattened_file_path = os.path.join(extract_to_dir, f"{name}_{counter}{ext}")
                                 counter += 1
 
-                            # Escribir el archivo al directorio de extracción (primer nivel)
+                            # Write file to extraction directory (first level)
                             with open(flattened_file_path, "wb") as output_file:
                                 output_file.write(file_content)
 
                             extracted_files.append(flattened_file_path)
 
-                            # Mostrar información de extracción
+                            # Show extraction information
                             if file_name != base_filename:
-                                print(f"   ✅ Extraído: {file_name} -> {base_filename}")
+                                self.logger.debug(f"Extracted: {file_name} -> {base_filename}")
                             else:
-                                print(f"   ✅ Extraído: {base_filename}")
+                                self.logger.debug(f"Extracted: {base_filename}")
                         else:
-                            print(f"   ⏭️ Ignorado archivo del sistema: {file_name}")
+                            self.logger.debug(f"Ignored system file: {file_name}")
                     else:
-                        print(f"   📁 Ignorado directorio: {file_name}")
+                        self.logger.debug(f"Ignored directory: {file_name}")
 
-            # Resumen de extracción
-            print(f"📊 RESUMEN DE EXTRACCIÓN:")
-            print(f"   Total archivos extraídos: {len(extracted_files)}")
+            # Extraction summary
+            self.logger.info(f"EXTRACTION SUMMARY:")
+            self.logger.info(f"Total files extracted: {len(extracted_files)}")
 
             if len(extracted_files) == 1:
-                print(f"   📄 Archivo único: {os.path.basename(extracted_files[0])}")
+                self.logger.info(f"Single file: {os.path.basename(extracted_files[0])}")
             else:
-                print(f"   📄 Múltiples archivos:")
+                self.logger.info(f"Multiple files:")
                 for i, file_path in enumerate(extracted_files, 1):
-                    print(f"     [{i}] {os.path.basename(file_path)}")
+                    self.logger.debug(f"     [{i}] {os.path.basename(file_path)}")
 
-            print(f"📦 ===============================")
+            self.logger.info("===============================")
 
             return extracted_files
 
         except Exception as e:
-            print(f"❌ Error al extraer ZIP: {str(e)}")
+            self.logger.error(f"Error extracting ZIP: {str(e)}")
             return extracted_files
 
     def _upload_files_to_endpoint(
         self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
     ) -> bool:
-        """Método base para enviar archivos al endpoint. Override si necesitas lógica específica."""
+        """Base method to send files to endpoint. Override if you need specific logic."""
         try:
-            from web_scrapers.infrastructure.services.file_upload_service import FileUploadService
-
             upload_service = FileUploadService()
 
-            # Determinar tipo de upload basado en la clase
+            # Determine upload type based on class
             upload_type = self._get_upload_type()
 
             return upload_service.upload_files_batch(
@@ -172,11 +174,11 @@ class ScraperBaseStrategy(ABC):
             )
 
         except Exception as e:
-            print(f"❌ Error en upload de archivos: {str(e)}")
+            self.logger.error(f"Error uploading files: {str(e)}")
             return False
 
     def _get_upload_type(self) -> str:
-        """Determina el tipo de upload basado en la clase de estrategia."""
+        """Determine upload type based on strategy class."""
         class_name = self.__class__.__name__.lower()
         if "monthly" in class_name:
             return "monthly"
@@ -194,18 +196,18 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
         try:
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
-                return ScraperResult(False, error="No se pudo encontrar la sección de archivos")
+                return ScraperResult(False, error="Could not find files section")
 
             downloaded_files = self._download_files(files_section, config, billing_cycle)
             if not downloaded_files:
-                return ScraperResult(False, error="No se pudieron descargar los archivos")
+                return ScraperResult(False, error="Could not download files")
 
             upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
             if not upload_result:
-                return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
+                return ScraperResult(False, error="Error sending files to external endpoint")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
+                True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
@@ -228,18 +230,18 @@ class DailyUsageScraperStrategy(ScraperBaseStrategy):
         try:
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
-                return ScraperResult(False, error="No se pudo encontrar la sección de archivos")
+                return ScraperResult(False, error="Could not find files section")
 
             downloaded_files = self._download_files(files_section, config, billing_cycle)
             if not downloaded_files:
-                return ScraperResult(False, error="No se pudieron descargar los archivos")
+                return ScraperResult(False, error="Could not download files")
 
             upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
             if not upload_result:
-                return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
+                return ScraperResult(False, error="Error sending files to external endpoint")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
+                True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
@@ -262,18 +264,18 @@ class PDFInvoiceScraperStrategy(ScraperBaseStrategy):
         try:
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
-                return ScraperResult(False, error="No se pudo encontrar la sección de archivos")
+                return ScraperResult(False, error="Could not find files section")
 
             downloaded_files = self._download_files(files_section, config, billing_cycle)
             if not downloaded_files:
-                return ScraperResult(False, error="No se pudieron descargar los archivos")
+                return ScraperResult(False, error="Could not download files")
 
             upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
             if not upload_result:
-                return ScraperResult(False, error="Error al enviar archivos al endpoint externo")
+                return ScraperResult(False, error="Error sending files to external endpoint")
 
             return ScraperResult(
-                True, f"Procesados {len(downloaded_files)} archivos", self._create_file_mapping(downloaded_files)
+                True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
