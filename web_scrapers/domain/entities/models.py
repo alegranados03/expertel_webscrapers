@@ -15,7 +15,9 @@ class FileDownloadInfo(BaseModel):
     file_path: str
     download_timestamp: Optional[datetime] = None
     billing_cycle_file: Optional["BillingCycleFile"] = None  # Mapeo al BillingCycleFile correspondiente
-    daily_usage_file: Optional["BillingCycleDailyUsageFile"] = None  # Mapeo al BillingCycleDailyUsageFile correspondiente
+    daily_usage_file: Optional["BillingCycleDailyUsageFile"] = (
+        None  # Mapeo al BillingCycleDailyUsageFile correspondiente
+    )
     pdf_file: Optional["BillingCyclePDFFile"] = None  # Mapeo al BillingCyclePDFFile correspondiente
 
     model_config = {"from_attributes": True}
@@ -121,7 +123,7 @@ class CarrierPortalCredential(BaseModel):
 class BillingCycleDailyUsageFile(BaseModel):
     id: Optional[int] = None
     billing_cycle_id: int
-    status: BillingCycleStatus = BillingCycleStatus.OPEN
+    status: FileStatus = FileStatus.TO_BE_FETCHED
     s3_key: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -157,6 +159,7 @@ class ScraperJob(BaseModel):
     type: ScraperType = ScraperType.DAILY_USAGE
     log: Optional[str] = None
     completed_at: Optional[datetime] = None
+    available_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -252,6 +255,7 @@ class ScraperJobFilter(BaseModel):
     status: Optional[ScraperJobStatus] = None
     type: Optional[ScraperType] = None
     completed_at: Optional[datetime] = None
+    available_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -259,7 +263,7 @@ class ScraperJobFilter(BaseModel):
 class BillingCycleDailyUsageFileFilter(BaseModel):
     id: Optional[int] = None
     billing_cycle_id: Optional[int] = None
-    status: Optional[BillingCycleStatus] = None
+    status: Optional[FileStatus] = None
     s3_key: Optional[str] = None
 
     model_config = {"from_attributes": True}

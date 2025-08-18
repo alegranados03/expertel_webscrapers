@@ -291,6 +291,7 @@ class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
             type=model.type,
             log=model.log,
             completed_at=model.completed_at,
+            available_at=model.available_at,
         )
 
     def to_orm_model(self, entity: ScraperJobEntity) -> ScraperJob:
@@ -302,6 +303,7 @@ class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
             type=entity.type,
             log=entity.log,
             completed_at=entity.completed_at,
+            available_at=entity.available_at,
         )
 
 

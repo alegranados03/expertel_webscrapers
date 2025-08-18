@@ -1,4 +1,3 @@
-
 import os
 import time
 from datetime import datetime
@@ -58,27 +57,29 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             # === PARTE 1: DESCARGAR ZIP DESDE BILLS SECTION ===
             print("📦 === PARTE 1: DESCARGANDO ZIP DESDE BILLS SECTION ===")
-            
+
             # 1. Click en bill options button
-            bill_options_xpath = "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
+            bill_options_xpath = (
+                "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
+            )
             print("💰 Click en bill options...")
             self.browser_wrapper.click_element(bill_options_xpath)
             time.sleep(3)
-            
+
             # 2. Click en download bills section
             download_bills_xpath = "/html[1]/body[1]/div[5]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/div[1]/div[1]/div[1]/div[2]/div[1]/a[2]"
             print("📊 Click en download bills section...")
             self.browser_wrapper.click_element(download_bills_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
-            
+
             # 3. Buscar y click en el mes correcto basado en end_date
             target_month = billing_cycle.end_date.strftime("%B")
             target_year = billing_cycle.end_date.year
-            
+
             print(f"🔍 Buscando mes: {target_month} {target_year}")
             month_clicked = self._find_and_click_target_month(target_month, target_year)
-            
+
             if month_clicked:
                 # 4. Descargar ZIP y procesar archivos extraídos
                 zip_files = self._download_and_process_zip(billing_cycle, billing_cycle_file_map)
@@ -86,10 +87,10 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 print(f"✅ Parte 1 completada: {len(zip_files)} archivos del ZIP")
             else:
                 print("⚠️ No se pudo encontrar el mes objetivo, continuando sin ZIP")
-            
+
             # === PARTE 2: DESCARGAR ARCHIVOS INDIVIDUALES DESDE REPORTS SECTION ===
             print("📄 === PARTE 2: DESCARGANDO ARCHIVOS INDIVIDUALES ===")
-            
+
             # 1. Navegar a billing header
             billing_header_xpath = "/html[1]/body[1]/div[1]/div[1]/ul[1]/li[2]/a[1]/span[1]"
             print("💳 Click en billing header...")
@@ -97,29 +98,31 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.browser_wrapper.wait_for_page_load()
             print("⏳ Esperando 1 minuto...")
             time.sleep(60)
-            
+
             # 2. Click en reports header
             reports_header_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/a[1]"
             print("📊 Click en reports header...")
             self.browser_wrapper.click_element(reports_header_xpath)
             time.sleep(2)
-            
+
             # 3. Click en detail reports
-            detail_reports_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[2]/a[1]/span[1]"
+            detail_reports_xpath = (
+                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[2]/a[1]/span[1]"
+            )
             print("📋 Click en detail reports...")
             self.browser_wrapper.click_element(detail_reports_xpath)
             self.browser_wrapper.wait_for_page_load()
             print("⏳ Esperando 1 minuto...")
             time.sleep(60)
-            
+
             # 4. Configurar fecha
             self._configure_date_selection(billing_cycle)
-            
+
             # 5. Descargar reportes individuales
             individual_files = self._download_individual_reports(billing_cycle, billing_cycle_file_map)
             downloaded_files.extend(individual_files)
             print(f"✅ Parte 2 completada: {len(individual_files)} archivos individuales")
-            
+
             # 6. Reset a pantalla principal
             self._reset_to_main_screen()
 
@@ -139,18 +142,18 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             # Buscar el contenedor de bills section
             bills_container_xpath = "/html/body/div[1]/main/div/div[2]/div/div[2]"
-            
+
             # Buscar el año objetivo primero
             year_xpath = f"//h2[contains(text(), '{target_year}')]"
             if not self.browser_wrapper.find_element_by_xpath(year_xpath):
                 print(f"❌ No se encontró el año {target_year}")
                 return False
-            
+
             print(f"✅ Encontrado año {target_year}")
-            
+
             # Buscar el enlace del mes objetivo
             month_link_xpath = f"//div[contains(@class, 'css-146c3p1') and contains(text(), '{target_month}')]"
-            
+
             if self.browser_wrapper.find_element_by_xpath(month_link_xpath):
                 print(f"✅ Encontrado mes {target_month}, haciendo click...")
                 # Hacer click en el div parent que contiene el enlace
@@ -162,26 +165,26 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             else:
                 print(f"❌ No se encontró el mes {target_month} en el año {target_year}")
                 return False
-                
+
         except Exception as e:
             print(f"❌ Error buscando mes objetivo: {str(e)}")
             return False
-    
+
     def _download_and_process_zip(self, billing_cycle: BillingCycle, file_map: dict) -> List[FileDownloadInfo]:
         """Descarga y procesa el ZIP con los archivos del mes."""
         downloaded_files = []
-        
+
         try:
             # El click en el mes debería llevarnos a una página con un enlace de descarga ZIP
             # Intentar encontrar el enlace de descarga (puede variar según la estructura)
-            
+
             # Posibles XPaths para el enlace de descarga ZIP
             zip_download_xpaths = [
                 "//a[contains(@href, '.zip') or contains(text(), 'download') or contains(text(), 'Download')]",
                 "//button[contains(text(), 'download') or contains(text(), 'Download')]",
-                "//div[contains(@class, 'download')]//a"
+                "//div[contains(@class, 'download')]//a",
             ]
-            
+
             zip_file_path = None
             for xpath in zip_download_xpaths:
                 try:
@@ -192,57 +195,57 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                             break
                 except:
                     continue
-            
+
             if not zip_file_path:
                 print("⚠️ No se pudo descargar ZIP")
                 return downloaded_files
-            
+
             print(f"📦 ZIP descargado: {os.path.basename(zip_file_path)}")
-            
+
             # Extraer archivos del ZIP
             extracted_files = self._extract_zip_files(zip_file_path)
             if not extracted_files:
                 print("❌ No se pudieron extraer archivos del ZIP")
                 return downloaded_files
-            
+
             print(f"📁 Extraídos {len(extracted_files)} archivos del ZIP")
-            
+
             # Procesar archivos extraídos y mapearlos
             for i, file_path in enumerate(extracted_files):
                 original_filename = os.path.basename(file_path)
                 print(f"📄 Procesando archivo: {original_filename}")
-                
+
                 # Buscar el BillingCycleFile correspondiente
                 corresponding_bcf = self._find_matching_billing_cycle_file(original_filename, file_map)
-                
+
                 if corresponding_bcf:
                     print(f"✅ Mapeando {original_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
                 else:
                     print(f"⚠️ No se encontró mapeo para {original_filename}")
-                
+
                 file_info = FileDownloadInfo(
                     file_id=corresponding_bcf.id if corresponding_bcf else (i + 1000),  # Offset para ZIP files
                     file_name=original_filename,
                     download_url="N/A",
                     file_path=file_path,
-                    billing_cycle_file=corresponding_bcf
+                    billing_cycle_file=corresponding_bcf,
                 )
                 downloaded_files.append(file_info)
-            
+
             return downloaded_files
-            
+
         except Exception as e:
             print(f"❌ Error procesando ZIP: {str(e)}")
             return downloaded_files
-    
+
     def _find_matching_billing_cycle_file(self, filename: str, file_map: dict) -> Optional[Any]:
         """Encuentra el BillingCycleFile que corresponde al nombre de archivo."""
         filename_lower = filename.lower()
-        
+
         # Mapeo de patrones de nombres de archivos ZIP a slugs de Telus
         pattern_to_slug = {
             "account_detail": "invoice_detail",
-            "airtime_detail": "airtime_detail", 
+            "airtime_detail": "airtime_detail",
             "dew_report": "wireless_data",
             "group_summary": "group_summary",
             "individual_detail": "individual_detail",
@@ -252,31 +255,33 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             "wireless_subscriber_usage": "wireless_subscriber_usage",
             "mobility_device": "mobility_device",
             "wireless_voice": "wireless_voice",
-            "wireless_data": "wireless_data"
+            "wireless_data": "wireless_data",
         }
-        
+
         for pattern, slug in pattern_to_slug.items():
             if pattern in filename_lower:
                 bcf = file_map.get(slug)
                 if bcf:
                     return bcf
-        
+
         return None
-    
+
     def _configure_date_selection(self, billing_cycle: BillingCycle):
         """Configura la selección de fecha para los reportes individuales."""
         try:
             # 1. Click en date selection
-            date_selection_xpath = "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/button[1]"
+            date_selection_xpath = (
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/button[1]"
+            )
             print("📅 Click en date selection...")
             self.browser_wrapper.click_element(date_selection_xpath)
             time.sleep(2)
-            
+
             # 2. Configurar dropdown de fecha
             target_period = billing_cycle.end_date.strftime("%B %Y") + " statements"
             select_date_dropdown_xpath = "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/select[1]"
             print(f"📅 Seleccionando período: {target_period}")
-            
+
             try:
                 self.browser_wrapper.select_dropdown_option(select_date_dropdown_xpath, target_period)
             except:
@@ -284,63 +289,85 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 fallback_period = billing_cycle.end_date.strftime("%B %Y")
                 print(f"📅 Fallback - Seleccionando: {fallback_period}")
                 self.browser_wrapper.select_dropdown_option(select_date_dropdown_xpath, fallback_period)
-            
+
             time.sleep(2)
-            
+
             # 3. Click en confirm button
             confirm_button_xpath = "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[5]/button[1]"
             print("✅ Click en confirm button...")
             self.browser_wrapper.click_element(confirm_button_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
-            
+
         except Exception as e:
             print(f"❌ Error configurando fecha: {str(e)}")
             raise
-    
+
     def _download_individual_reports(self, billing_cycle: BillingCycle, file_map: dict) -> List[FileDownloadInfo]:
         """Descarga reportes individuales con verificación de nombres exactos."""
         downloaded_files = []
-        
+
         # Lista de reportes con nombres exactos a verificar
         individual_reports = [
-            ("wireless_subscriber_charges", "Wireless Subscriber Charges", "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[1]/div[1]/div[2]/ul[1]/li[4]/button[1]"),
-            ("wireless_subscriber_usage", "Wireless Subscriber Usage", "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[1]/div[1]/div[2]/ul[1]/li[5]/button[1]"),
-            ("invoice_detail", "Invoice Detail Report", "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[2]/div[1]/div[2]/ul[1]/li[1]/button[1]"),
-            ("mobility_device", "Wireless Data Usage Detail", "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[11]/div[1]/div[2]/ul[1]/li[1]/button[1]"),
-            ("wireless_data", "Wireless Data Usage Detail", "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[21]/div[1]/div[2]/ul[1]/li[1]/button[1]"),
+            (
+                "wireless_subscriber_charges",
+                "Wireless Subscriber Charges",
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[1]/div[1]/div[2]/ul[1]/li[4]/button[1]",
+            ),
+            (
+                "wireless_subscriber_usage",
+                "Wireless Subscriber Usage",
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[1]/div[1]/div[2]/ul[1]/li[5]/button[1]",
+            ),
+            (
+                "invoice_detail",
+                "Invoice Detail Report",
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[2]/div[1]/div[2]/ul[1]/li[1]/button[1]",
+            ),
+            (
+                "mobility_device",
+                "Wireless Data Usage Detail",
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[11]/div[1]/div[2]/ul[1]/li[1]/button[1]",
+            ),
+            (
+                "wireless_data",
+                "Wireless Data Usage Detail",
+                "/html[1]/body[1]/div[2]/form[1]/div[1]/div[3]/div[21]/div[1]/div[2]/ul[1]/li[1]/button[1]",
+            ),
         ]
-        
+
         for report_slug, expected_name, report_xpath in individual_reports:
             try:
                 print(f"📄 Procesando reporte: {expected_name}")
-                
+
                 # Verificar que el botón existe y tiene el nombre correcto
                 if not self.browser_wrapper.find_element_by_xpath(report_xpath):
                     print(f"⚠️ Botón no encontrado para {expected_name}, saltando...")
                     continue
-                
+
                 # Verificar el texto del botón
                 button_text = self.browser_wrapper.get_text(report_xpath)
                 if expected_name not in button_text:
-                    print(f"⚠️ Nombre incorrecto. Esperado: '{expected_name}', Encontrado: '{button_text}', saltando...")
+                    print(
+                        f"⚠️ Nombre incorrecto. Esperado: '{expected_name}', Encontrado: '{button_text}', saltando..."
+                    )
                     continue
-                
+
                 print(f"✅ Nombre verificado: {expected_name}")
                 corresponding_bcf = file_map.get(report_slug)
                 if corresponding_bcf:
                     print(f"📋 Usando BillingCycleFile ID {corresponding_bcf.id} para {report_slug}")
-                
+
                 # Click en el reporte y esperar 30 segundos
                 self.browser_wrapper.click_element(report_xpath)
                 print("⏳ Esperando 30 segundos...")
                 time.sleep(30)
-                
+
                 # Click en download button
                 download_xpath = "/html[1]/body[1]/div[3]/form[1]/div[2]/div[2]/div[1]/div[1]/button[1]"
                 self.browser_wrapper.click_element(download_xpath)
                 time.sleep(2)
-                
+
                 # Click en CSV radio label
                 csv_xpath = "/html/body/div[7]/div/div/div[2]/form/div[1]/div/div/fieldset/label[2]"
                 try:
@@ -348,37 +375,39 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     time.sleep(1)
                 except:
                     print("⚠️ No se pudo seleccionar CSV, continuando...")
-                
+
                 # Click en confirm download button y esperar 30 segundos
                 confirm_download_xpath = "/html/body/div[7]/div/div/div[3]/button[1]"
-                downloaded_file_path = self.browser_wrapper.expect_download_and_click(confirm_download_xpath, timeout=30000)
-                
+                downloaded_file_path = self.browser_wrapper.expect_download_and_click(
+                    confirm_download_xpath, timeout=30000
+                )
+
                 if downloaded_file_path:
                     actual_filename = os.path.basename(downloaded_file_path)
                     print(f"✅ Descargado: {actual_filename}")
-                    
+
                     file_info = FileDownloadInfo(
                         file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
                         file_name=actual_filename,
                         download_url="N/A",
                         file_path=downloaded_file_path,
-                        billing_cycle_file=corresponding_bcf
+                        billing_cycle_file=corresponding_bcf,
                     )
                     downloaded_files.append(file_info)
-                    
+
                     if corresponding_bcf:
                         print(f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
                 else:
                     print(f"⚠️ No se pudo descargar {expected_name}")
-                
+
                 print("⏳ Esperando 30 segundos...")
                 time.sleep(30)
-                
+
                 # Volver al menú anterior
                 back_xpath = "/html[1]/body[1]/div[3]/form[1]/div[1]/div[1]/a[1]"
                 self.browser_wrapper.click_element(back_xpath)
                 time.sleep(2)
-                
+
             except Exception as e:
                 print(f"❌ Error descargando {expected_name}: {str(e)}")
                 try:
@@ -389,40 +418,46 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 except:
                     pass
                 continue
-        
+
         # Descargar el último reporte desde summary reports
         try:
             print("📄 === DESCARGANDO ÚLTIMO REPORTE: WIRELESS VOICE USAGE ===")
-            
+
             # Click en reports header
-            reports_header_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/a[1]/span[1]"
+            reports_header_xpath = (
+                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/a[1]/span[1]"
+            )
             self.browser_wrapper.click_element(reports_header_xpath)
             time.sleep(2)
-            
+
             # Click en summary reports section y esperar 10 segundos
-            summary_reports_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[1]/a[1]/span[1]"
+            summary_reports_xpath = (
+                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[1]/a[1]/span[1]"
+            )
             self.browser_wrapper.click_element(summary_reports_xpath)
             print("⏳ Esperando 10 segundos...")
             time.sleep(10)
-            
+
             # Wireless voice usage report y esperar 1 minuto
-            voice_report_xpath = "/html[1]/body[1]/form[1]/div[2]/div[3]/div[3]/div[18]/div[1]/div[2]/ul[1]/li[1]/button[1]"
-            
+            voice_report_xpath = (
+                "/html[1]/body[1]/form[1]/div[2]/div[3]/div[3]/div[18]/div[1]/div[2]/ul[1]/li[1]/button[1]"
+            )
+
             # Verificar nombre
             if self.browser_wrapper.find_element_by_xpath(voice_report_xpath):
                 button_text = self.browser_wrapper.get_text(voice_report_xpath)
                 if "Wireless Voice Usage per account and services" in button_text or "Wireless Voice" in button_text:
                     print("✅ Wireless Voice Usage encontrado")
-                    
+
                     self.browser_wrapper.click_element(voice_report_xpath)
                     print("⏳ Esperando 1 minuto...")
                     time.sleep(60)
-                    
+
                     # Download button
                     voice_download_xpath = "/html/body/div[2]/form/div[2]/div[2]/div/div/button[3]"
                     self.browser_wrapper.click_element(voice_download_xpath)
                     time.sleep(2)
-                    
+
                     # CSV radio label
                     voice_csv_xpath = "/html/body/div[8]/div/div/div[2]/form/div[1]/div/div/fieldset/label[2]"
                     try:
@@ -430,31 +465,35 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                         time.sleep(1)
                     except:
                         pass
-                    
+
                     # Confirm download button y esperar 30 segundos
                     voice_confirm_xpath = "/html/body/div[8]/div/div/div[3]/button[1]"
-                    downloaded_file_path = self.browser_wrapper.expect_download_and_click(voice_confirm_xpath, timeout=30000)
-                    
+                    downloaded_file_path = self.browser_wrapper.expect_download_and_click(
+                        voice_confirm_xpath, timeout=30000
+                    )
+
                     if downloaded_file_path:
                         corresponding_bcf = file_map.get("wireless_voice")
                         actual_filename = os.path.basename(downloaded_file_path)
                         print(f"✅ Wireless Voice descargado: {actual_filename}")
-                        
+
                         file_info = FileDownloadInfo(
                             file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
                             file_name=actual_filename,
                             download_url="N/A",
                             file_path=downloaded_file_path,
-                            billing_cycle_file=corresponding_bcf
+                            billing_cycle_file=corresponding_bcf,
                         )
                         downloaded_files.append(file_info)
-                        
+
                         if corresponding_bcf:
-                            print(f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
-                    
+                            print(
+                                f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}"
+                            )
+
                     print("⏳ Esperando 30 segundos...")
                     time.sleep(30)
-                    
+
                     # Back to previous menu
                     voice_back_xpath = "/html/body/div[2]/form/div[1]/div[1]/a"
                     self.browser_wrapper.click_element(voice_back_xpath)
@@ -463,10 +502,10 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     print(f"⚠️ Nombre incorrecto para Wireless Voice. Encontrado: {button_text}")
             else:
                 print("⚠️ Wireless Voice Usage report no encontrado")
-                
+
         except Exception as e:
             print(f"❌ Error descargando Wireless Voice Usage: {str(e)}")
-        
+
         return downloaded_files
 
     def _reset_to_main_screen(self):
@@ -602,85 +641,91 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         """Monitorea la tabla de resultados y descarga cuando esté listo."""
         max_attempts = 10  # Máximo 10 reintentos
         attempt = 0
-        
+
         while attempt < max_attempts:
             try:
                 attempt += 1
                 print(f"🔍 Intento {attempt}/{max_attempts} - Verificando results table...")
-                
+
                 # Verificar si existe la results table
                 results_table_xpath = "/html/body/div[1]/html/body/div/div/div/div[2]/div[2]/div/div[3]"
-                
+
                 if not self.browser_wrapper.find_element_by_xpath(results_table_xpath, timeout=10000):
                     print("⚠️ Results table no apareció, refrescando página...")
                     self.browser_wrapper.refresh()
                     print("⏳ Esperando 1 minuto después del refresh...")
                     time.sleep(60)
                     continue
-                
+
                 print("✅ Results table encontrada")
-                
+
                 # Buscar nuestro reporte en la primera fila por nombre
                 first_row_name_xpath = "//div[@class='new__dynamic__table__column'][2]//div[@class='new-dynamic-table__table__cell'][1]//span"
-                
+
                 if not self.browser_wrapper.find_element_by_xpath(first_row_name_xpath):
                     print("⚠️ Primera fila no encontrada, esperando...")
                     time.sleep(60)
                     continue
-                
+
                 name_text = self.browser_wrapper.get_text(first_row_name_xpath)
                 print(f"📝 Nombre en primera fila: {name_text}")
-                
+
                 if report_name not in name_text:
                     print(f"⚠️ Reporte '{report_name}' no encontrado en primera fila, esperando...")
                     time.sleep(60)
                     continue
-                
+
                 print(f"✅ Reporte '{report_name}' encontrado en primera fila")
-                
+
                 # Verificar el estado en la columna Status (columna 3)
                 first_row_status_xpath = "//div[@class='new__dynamic__table__column'][3]//div[@class='new-dynamic-table__table__cell'][1]//span"
-                
+
                 if not self.browser_wrapper.find_element_by_xpath(first_row_status_xpath):
                     print("⚠️ Estado no encontrado, esperando...")
                     time.sleep(60)
                     continue
-                
+
                 status_element = self.browser_wrapper.get_text(first_row_status_xpath)
                 print(f"📊 Estado del reporte: {status_element}")
-                
+
                 # Verificar si contiene enlace de descarga
                 download_link_xpath = "/html/body/div[1]/html/body/div/div/div/div[2]/div[2]/div/div[3]/div[2]/div[1]/div[3]/div[1]//a[@class='new-dynamic-table__table__cell__download-anchor']"
-                
+
                 if self.browser_wrapper.find_element_by_xpath(download_link_xpath):
                     link_text = self.browser_wrapper.get_text(download_link_xpath)
                     print(f"🔗 Enlace encontrado: {link_text}")
-                    
+
                     if "Download" in link_text:
                         print("✅ Reporte listo para descarga!")
-                        
+
                         # Descargar archivo
                         downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                             download_link_xpath, timeout=30000
                         )
-                        
+
                         if downloaded_file_path:
                             actual_filename = os.path.basename(downloaded_file_path)
-                            file_size = os.path.getsize(downloaded_file_path) if os.path.exists(downloaded_file_path) else 1024000
-                            
+                            file_size = (
+                                os.path.getsize(downloaded_file_path)
+                                if os.path.exists(downloaded_file_path)
+                                else 1024000
+                            )
+
                             print(f"✅ Archivo descargado: {actual_filename}")
-                            
+
                             file_info = FileDownloadInfo(
                                 file_id=daily_usage_file.id if daily_usage_file else 1,
                                 file_name=actual_filename,
                                 download_url="N/A",
                                 file_path=downloaded_file_path,
-                                daily_usage_file=daily_usage_file
+                                daily_usage_file=daily_usage_file,
                             )
-                            
+
                             if daily_usage_file:
-                                print(f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
-                            
+                                print(
+                                    f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                                )
+
                             return file_info
                         else:
                             print("❌ Error en descarga")
@@ -697,12 +742,12 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                     print("⚠️ Enlace de descarga no encontrado, esperando...")
                     time.sleep(60)
                     continue
-                    
+
             except Exception as e:
                 print(f"❌ Error en intento {attempt}: {str(e)}")
                 time.sleep(60)
                 continue
-        
+
         print("⏰ Máximo de intentos alcanzado")
         return None
 
@@ -738,7 +783,9 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 time.sleep(5)
 
             # 2. Click en bill options button
-            bill_options_xpath = "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
+            bill_options_xpath = (
+                "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
+            )
             print("💰 Click en bill options button...")
             self.browser_wrapper.click_element(bill_options_xpath)
             time.sleep(3)
@@ -792,53 +839,57 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             # 3. Buscar y hacer click en la fecha más cercana al end_date del billing cycle
             target_month = billing_cycle.end_date.month
             target_year = billing_cycle.end_date.year
-            
+
             print(f"🔍 Buscando PDF para {target_year}/{target_month:02d}")
-            
+
             # Buscar en la lista desplegada
             list_xpath = "/html/body/div[2]/div[3]/div[3]/div/div/div[2]/div[1]/div/div/div/div/div[2]/ul"
-            
+
             if self.browser_wrapper.find_element_by_xpath(list_xpath):
                 print("✅ Lista de PDFs encontrada")
-                
+
                 # Buscar el botón con la fecha más cercana
                 pdf_button_xpath = self._find_closest_pdf_in_list(target_year, target_month)
-                
+
                 if pdf_button_xpath:
                     print(f"✅ PDF encontrado, descargando...")
-                    
+
                     # Hacer click para descargar (se dispara automáticamente)
-                    downloaded_file_path = self.browser_wrapper.expect_download_and_click(pdf_button_xpath, timeout=30000)
-                    
+                    downloaded_file_path = self.browser_wrapper.expect_download_and_click(
+                        pdf_button_xpath, timeout=30000
+                    )
+
                     if downloaded_file_path:
                         actual_filename = os.path.basename(downloaded_file_path)
-                        file_size = os.path.getsize(downloaded_file_path) if os.path.exists(downloaded_file_path) else 2048000
-                        
+                        file_size = (
+                            os.path.getsize(downloaded_file_path) if os.path.exists(downloaded_file_path) else 2048000
+                        )
+
                         print(f"✅ PDF descargado: {actual_filename}")
-                        
+
                         file_info = FileDownloadInfo(
                             file_id=pdf_file.id if pdf_file else 1,
                             file_name=actual_filename,
                             download_url="N/A",
                             file_path=downloaded_file_path,
-                            pdf_file=pdf_file
+                            pdf_file=pdf_file,
                         )
                         downloaded_files.append(file_info)
-                        
+
                         if pdf_file:
                             print(f"✅ MAPEO CONFIRMADO: {actual_filename} -> BillingCyclePDFFile ID {pdf_file.id}")
                     else:
                         print("⚠️ Error con expect_download, usando método tradicional...")
                         self.browser_wrapper.click_element(pdf_button_xpath)
                         time.sleep(5)
-                        
+
                         estimated_filename = f"telus_invoice_{billing_cycle.end_date.strftime('%Y_%m_%d')}.pdf"
                         file_info = FileDownloadInfo(
                             file_id=pdf_file.id if pdf_file else 1,
                             file_name=estimated_filename,
                             download_url="N/A",
                             file_path=f"{DOWNLOADS_DIR}/{estimated_filename}",
-                            pdf_file=pdf_file
+                            pdf_file=pdf_file,
                         )
                         downloaded_files.append(file_info)
                         print(f"✅ PDF descargado (método tradicional): {estimated_filename}")
@@ -865,16 +916,16 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         """Encuentra el PDF más cercano en la lista desplegada."""
         try:
             print(f"🔍 Buscando PDF para {target_year}/{target_month:02d}")
-            
+
             # 1. Buscar fecha exacta (ignorando el día)
             exact_pattern = f"{target_year}/{target_month:02d}"
             exact_xpath = f"//button[@class='list-group-item bdf-doc-item'][contains(text(), '{exact_pattern}')]"
-            
+
             if self.browser_wrapper.find_element_by_xpath(exact_xpath):
                 button_text = self.browser_wrapper.get_text(exact_xpath)
                 print(f"✅ Encontrado PDF mes exacto: {button_text}")
                 return exact_xpath
-            
+
             # 2. Buscar mes anterior
             if target_month > 1:
                 prev_month = target_month - 1
@@ -882,34 +933,34 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             else:
                 prev_month = 12
                 prev_year = target_year - 1
-            
+
             prev_pattern = f"{prev_year}/{prev_month:02d}"
             prev_xpath = f"//button[@class='list-group-item bdf-doc-item'][contains(text(), '{prev_pattern}')]"
-            
+
             if self.browser_wrapper.find_element_by_xpath(prev_xpath):
                 button_text = self.browser_wrapper.get_text(prev_xpath)
                 print(f"✅ Encontrado PDF mes anterior: {button_text}")
                 return prev_xpath
-            
+
             # 3. Buscar cualquier PDF del año actual (ignorando mes y día)
             year_xpath = f"//button[@class='list-group-item bdf-doc-item'][contains(text(), '{target_year}/')]"
-            
+
             if self.browser_wrapper.find_element_by_xpath(year_xpath):
                 button_text = self.browser_wrapper.get_text(year_xpath)
                 print(f"✅ Encontrado PDF del año {target_year}: {button_text}")
                 return year_xpath
-            
+
             # 4. Tomar el primer PDF disponible como último recurso
             first_xpath = "//button[@class='list-group-item bdf-doc-item'][1]"
-            
+
             if self.browser_wrapper.find_element_by_xpath(first_xpath):
                 button_text = self.browser_wrapper.get_text(first_xpath)
                 print(f"✅ Tomando primer PDF disponible: {button_text}")
                 return first_xpath
-            
+
             print("❌ No se encontraron PDFs en la lista")
             return None
-            
+
         except Exception as e:
             print(f"❌ Error buscando PDF en lista: {str(e)}")
             return None

@@ -118,7 +118,7 @@ class CarrierPortalCredential(models.Model):
 
 class BillingCycleDailyUsageFile(models.Model):
     billing_cycle = models.ForeignKey(BillingCycle, on_delete=models.PROTECT, related_name="daily_usage_files")
-    status = models.CharField(choices=BillingCycleStatusChoices.choices, default=BillingCycleStatusChoices.OPEN)
+    status = models.CharField(choices=FileStatusChoices.choices, default=FileStatusChoices.TO_BE_FETCHED)
     s3_key = models.CharField(max_length=300, blank=True, null=True)
 
     def __init__(self, *args, **kwargs):
@@ -173,6 +173,7 @@ class ScraperJob(models.Model):
     )
     log = models.TextField(blank=True, null=True)
     completed_at = models.DateTimeField(null=True, blank=True)
+    available_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         db_table = "scraper_jobs"

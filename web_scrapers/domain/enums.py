@@ -9,11 +9,12 @@ class Navigators(str, Enum):
 
 
 class CarrierPortalUrls(str, Enum):
-    ATT = "https://www.business.att.com/login-portal.html"
+    ATT = "https://www.wireless.att.com/premiercare/"
     BELL = "https://business.bell.ca/corporateselfserve/Login"
     TELUS = "https://www.telus.com/en"
     ROGERS = ""
-    TMOBILE = "https://account.t-mobile.com/signin/v2/?redirect_uri=https:%2F%2Ftfb.t-mobile.com%2Fimplicit%2Fcallback&scope=TMO_ID_profile%20openid%20role%20extended_lines%20email&client_id=TFBBilling&access_type=ONLINE&response_type=code"
+    TMOBILE = "https://account.t-mobile.com"
+    # TMOBILE = "https://account.t-mobile.com/signin/v2/?redirect_uri=https:%2F%2Ftfb.t-mobile.com%2Fimplicit%2Fcallback&scope=TMO_ID_profile%20openid%20role%20extended_lines%20email&client_id=TFBBilling&access_type=ONLINE&response_type=code"
     VERIZON = "https://mblogin.verizonwireless.com/account/business/ilogin"
 
 
@@ -76,3 +77,28 @@ class TelusFileSlug(str, Enum):
     GROUP_SUMMARY = "group_summary"
     SUMMARY_OF_RENEWAL = "summary_of_renewal"
     INVOICE_DETAIL = "invoice_detail"
+
+
+class VerizonFileSlug(str, Enum):
+    ACCOUNT_AND_WIRELESS = "account_wireless"
+    WIRELESS_CHARGES_DETAIL = "wireless_charges_detail"
+    DEVICE_REPORT = "device_report"
+    SUSPENDED_WIRELESS_NUMBERS = "suspended_wireless_numbers"
+    ACTIVATION_AND_DEACTIVATION = "activation_and_deactivation"
+
+
+class ATTFileSlug(str, Enum):
+    WIRELESS_CHARGES = "wireless_charges"
+    FEATURE_REPORT = "feature_report"
+    USAGE_DETAILS = "usage_details"
+    FEES_AND_TAXES = "fees_and_taxes"
+    MONTHLY_CHARGES = "monthly_charges"
+    DEVICE_INSTALLMENT = "device_installment"
+    UPGRADE_AND_INVENTORY = "upgrade_and_inventory"
+
+
+class TMobileFileSlug(str, Enum):
+    CHARGES_AND_USAGE = "charges_and_usage"
+    USAGE_DETAIL = "usage_detail"
+    INVENTORY_REPORT = "inventory_report"
+    EQUIPMENT_INSTALLMENT = "equipment_installment"

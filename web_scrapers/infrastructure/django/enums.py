@@ -4,8 +4,8 @@ from django.db import models
 class FileStatusChoices(models.TextChoices):
     TO_BE_FETCHED = "to_be_fetched", "To be fetched"
     READY = "ready", "Ready"
-    READING = "reading", "Reading"
-    SUCCESS = "success", "Success"
+    PROCESSING = "processing", "Processing"
+    PROCESSED = "processed", "Processed"
     ERROR = "error", "Error"
 
 

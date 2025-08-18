@@ -1,5 +1,6 @@
-import time
 import os
+import time
+
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
