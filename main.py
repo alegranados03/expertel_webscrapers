@@ -12,9 +12,10 @@ django.setup()
 
 from web_scrapers.application.scraper_job_service import ScraperJobService
 from web_scrapers.application.session_manager import SessionManager
+from web_scrapers.domain.entities.models import ScraperJobCompleteContext
 from web_scrapers.domain.entities.scraper_factory import ScraperStrategyFactory
 from web_scrapers.domain.entities.session import Carrier as CarrierEnum, Credentials
-from web_scrapers.domain.enums import ScraperJobStatus
+from web_scrapers.domain.enums import ScraperJobStatus, Navigators
 from web_scrapers.infrastructure.logging_config import get_logger, setup_logging
 
 
@@ -24,24 +25,24 @@ class ScraperJobProcessor:
     def __init__(self):
         self.logger = get_logger("scraper_job_processor")
         self.scraper_job_service = ScraperJobService()
-        self.session_manager = SessionManager()
+        self.session_manager = SessionManager(browser_type=Navigators.CHROME)
         self.scraper_factory = ScraperStrategyFactory()
 
     def log_statistics(self) -> None:
         """Display available scraper statistics"""
         stats = self.scraper_job_service.get_scraper_statistics()
         self.logger.info(
-            f"Scraper statistics: {stats['available_now']} available now, "
-            f"{stats['future_scheduled']} scheduled for future, "
-            f"{stats['total_pending']} total pending"
+            f"Scraper statistics: {stats.available_now} available now, "
+            f"{stats.future_scheduled} scheduled for future, "
+            f"{stats.total_pending} total pending"
         )
 
-    def process_scraper_job(self, job_context: dict, job_number: int, total_jobs: int) -> bool:
+    def process_scraper_job(self, job_context: ScraperJobCompleteContext, job_number: int, total_jobs: int) -> bool:
         """
         Process a single scraper job.
 
         Args:
-            job_context: Complete job context
+            job_context: Complete job context with Pydantic models
             job_number: Current job number
             total_jobs: Total jobs to process
 
@@ -71,23 +72,9 @@ class ScraperJobProcessor:
                 f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
             )
 
-            # Convert credential to Credentials entity for scraper execution
-            # Map carrier name to enum
-            carrier_enum_map = {
-                "bell canada": CarrierEnum.BELL,
-                "bell": CarrierEnum.BELL,
-                "telus": CarrierEnum.TELUS,
-                "rogers": CarrierEnum.ROGERS,
-                "at&t": CarrierEnum.ATT,
-                "att": CarrierEnum.ATT,
-                "t-mobile": CarrierEnum.TMOBILE,
-                "tmobile": CarrierEnum.TMOBILE,
-                "verizon": CarrierEnum.VERIZON,
-            }
-
-            carrier_enum = carrier_enum_map.get(carrier.name.lower(), CarrierEnum.BELL)
+            carrier_enum = CarrierEnum(carrier.name)
             credentials = Credentials(
-                id=credential.id, username=credential.username, password=credential.password, carrier=carrier_enum
+                id=credential.id, username=credential.username, password=credential.get_decrypted_password(), carrier=carrier_enum
             )
 
             # Get browser wrapper from session manager

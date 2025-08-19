@@ -1,10 +1,14 @@
 from datetime import date, datetime
 from typing import List, Optional
-
+from cryptography.fernet import Fernet
+import base64
 from pydantic import BaseModel
 
 from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus, ScraperJobStatus, ScraperType
+from django.conf import settings
 
+SECRET_KEY = settings.ENCRYPTION_KEY.encode()
+cipher = Fernet(SECRET_KEY)
 
 class FileDownloadInfo(BaseModel):
     """Information about a file downloaded by a scraper."""
@@ -118,6 +122,11 @@ class CarrierPortalCredential(BaseModel):
     nickname: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+    def get_decrypted_password(self) -> str:
+        """Decrypt and return the password."""
+        decrypted = cipher.decrypt(base64.urlsafe_b64decode(self.password.encode()))
+        return decrypted.decode()
 
 
 class BillingCycleDailyUsageFile(BaseModel):

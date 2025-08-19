@@ -1,9 +1,14 @@
+import logging
 import re
 import time
 from datetime import datetime, timedelta
 from threading import Lock
 
 from flask import Flask, jsonify, request
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -35,7 +40,7 @@ def receive_sms():
         data = request.get_json()
 
         # Log the raw payload for debugging
-        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Raw payload: {data}")
+        logger.debug(f"Raw payload received: {data}")
 
         # Handle both old format (key) and new format (nested structure)
         raw_message = None
@@ -50,10 +55,10 @@ def receive_sms():
             raw_message = payload["text"]
             sender_phone = payload.get("from", {}).get("phone_number", "unknown")
         else:
-            print(f"❌ [{datetime.now().strftime('%H:%M:%S')}] Formato de mensaje no reconocido")
+            logger.warning("Unrecognized message format")
             return jsonify({"error": "Message format not recognized"}), 400
 
-        print(f"📩 [{datetime.now().strftime('%H:%M:%S')}] SMS desde {sender_phone}: {raw_message}")
+        logger.info(f"SMS from {sender_phone}: {raw_message}")
 
         # Buscar un número de 6-8 dígitos en cualquier parte del mensaje
         # Bell usa códigos de 8 dígitos según el ejemplo: 91721285
@@ -65,7 +70,7 @@ def receive_sms():
             with code_lock:
                 code_storage = {"code": code, "timestamp": datetime.now(), "used": False}
 
-            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Código 2FA capturado: {code} (desde {sender_phone})")
+            logger.info(f"2FA code captured: {code} (from {sender_phone})")
             return jsonify(
                 {
                     "status": "code saved",
@@ -75,11 +80,11 @@ def receive_sms():
                 }
             )
 
-        print(f"❌ [{datetime.now().strftime('%H:%M:%S')}] No se encontró código de 6-8 dígitos en: {raw_message}")
+        logger.warning(f"No 6-8 digit code found in: {raw_message}")
         return jsonify({"status": "no code found in message"})
 
     except Exception as e:
-        print(f"💥 [{datetime.now().strftime('%H:%M:%S')}] Error procesando SMS: {str(e)}")
+        logger.error(f"Error processing SMS: {str(e)}")
         return jsonify({"error": f"Error processing SMS: {str(e)}"}), 500
 
 
@@ -91,7 +96,7 @@ def receive_verizon_sms():
         data = request.get_json()
 
         # Log the raw payload for debugging
-        print(f"🔍 [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] Raw payload: {data}")
+        logger.debug(f"[VERIZON] Raw payload: {data}")
 
         # Handle both old format (key) and new format (nested structure)
         raw_message = None
@@ -106,10 +111,10 @@ def receive_verizon_sms():
             raw_message = payload["text"]
             sender_phone = payload.get("from", {}).get("phone_number", "unknown")
         else:
-            print(f"❌ [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] Formato de mensaje no reconocido")
+            logger.warning("[VERIZON] Unrecognized message format")
             return jsonify({"error": "Message format not recognized"}), 400
 
-        print(f"📩 [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] SMS desde {sender_phone}: {raw_message}")
+        logger.info(f"[VERIZON] SMS from {sender_phone}: {raw_message}")
 
         # Buscar un número de 6-8 dígitos en cualquier parte del mensaje
         # Verizon también usa códigos de 6-8 dígitos
@@ -121,9 +126,7 @@ def receive_verizon_sms():
             with verizon_code_lock:
                 verizon_code_storage = {"code": code, "timestamp": datetime.now(), "used": False}
 
-            print(
-                f"✅ [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] Código 2FA capturado: {code} (desde {sender_phone})"
-            )
+            logger.info(f"[VERIZON] 2FA code captured: {code} (from {sender_phone})")
             return jsonify(
                 {
                     "status": "code saved",
@@ -134,13 +137,11 @@ def receive_verizon_sms():
                 }
             )
 
-        print(
-            f"❌ [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] No se encontró código de 6-8 dígitos en: {raw_message}"
-        )
+        logger.warning(f"[VERIZON] No 6-8 digit code found in: {raw_message}")
         return jsonify({"status": "no code found in message", "carrier": "verizon"})
 
     except Exception as e:
-        print(f"💥 [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] Error procesando SMS: {str(e)}")
+        logger.error(f"[VERIZON] Error processing SMS: {str(e)}")
         return jsonify({"error": f"Error processing SMS: {str(e)}", "carrier": "verizon"}), 500
 
 
@@ -192,7 +193,7 @@ def consume_code():
         code = code_storage["code"]
         code_storage["used"] = True
 
-        print(f"🎯 [{datetime.now().strftime('%H:%M:%S')}] Código consumido: {code}")
+        logger.info(f"Code consumed: {code}")
         return jsonify(
             {
                 "code": code,
@@ -253,7 +254,7 @@ def consume_verizon_code():
         code = verizon_code_storage["code"]
         verizon_code_storage["used"] = True
 
-        print(f"🎯 [VERIZON] [{datetime.now().strftime('%H:%M:%S')}] Código consumido: {code}")
+        logger.info(f"[VERIZON] Code consumed: {code}")
         return jsonify(
             {
                 "code": code,
@@ -274,7 +275,7 @@ def receive_att_sms():
         data = request.get_json()
 
         # Log the raw payload for debugging
-        print(f"🔍 [AT&T] [{datetime.now().strftime('%H:%M:%S')}] Raw payload: {data}")
+        logger.debug(f"[AT&T] Raw payload: {data}")
 
         # Handle both old format (key) and new format (nested structure)
         raw_message = None
@@ -289,10 +290,10 @@ def receive_att_sms():
             raw_message = payload["text"]
             sender_phone = payload.get("from", {}).get("phone_number", "unknown")
         else:
-            print(f"❌ [AT&T] [{datetime.now().strftime('%H:%M:%S')}] Formato de mensaje no reconocido")
+            logger.warning("[AT&T] Unrecognized message format")
             return jsonify({"error": "Message format not recognized"}), 400
 
-        print(f"📩 [AT&T] [{datetime.now().strftime('%H:%M:%S')}] SMS desde {sender_phone}: {raw_message}")
+        logger.info(f"[AT&T] SMS from {sender_phone}: {raw_message}")
 
         # Buscar un número de 6-8 dígitos en cualquier parte del mensaje
         # AT&T también usa códigos de 6-8 dígitos
@@ -304,9 +305,7 @@ def receive_att_sms():
             with att_code_lock:
                 att_code_storage = {"code": code, "timestamp": datetime.now(), "used": False}
 
-            print(
-                f"✅ [AT&T] [{datetime.now().strftime('%H:%M:%S')}] Código 2FA capturado: {code} (desde {sender_phone})"
-            )
+            logger.info(f"[AT&T] 2FA code captured: {code} (from {sender_phone})")
             return jsonify(
                 {
                     "status": "code saved",
@@ -317,13 +316,11 @@ def receive_att_sms():
                 }
             )
 
-        print(
-            f"❌ [AT&T] [{datetime.now().strftime('%H:%M:%S')}] No se encontró código de 6-8 dígitos en: {raw_message}"
-        )
+        logger.warning(f"[AT&T] No 6-8 digit code found in: {raw_message}")
         return jsonify({"status": "no code found in message", "carrier": "att"})
 
     except Exception as e:
-        print(f"💥 [AT&T] [{datetime.now().strftime('%H:%M:%S')}] Error procesando SMS: {str(e)}")
+        logger.error(f"[AT&T] Error processing SMS: {str(e)}")
         return jsonify({"error": f"Error processing SMS: {str(e)}", "carrier": "att"}), 500
 
 
@@ -376,7 +373,7 @@ def consume_att_code():
         code = att_code_storage["code"]
         att_code_storage["used"] = True
 
-        print(f"🎯 [AT&T] [{datetime.now().strftime('%H:%M:%S')}] Código consumido: {code}")
+        logger.info(f"[AT&T] Code consumed: {code}")
         return jsonify(
             {
                 "code": code,
@@ -395,7 +392,7 @@ def receive_tmobile_sms():
         data = request.get_json()
 
         # Log the raw payload for debugging
-        print(f"🔍 [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] Raw payload: {data}")
+        logger.debug(f"[T-MOBILE] Raw payload: {data}")
 
         # Handle both old format (key) and new format (nested structure)
         raw_message = None
@@ -410,10 +407,10 @@ def receive_tmobile_sms():
             raw_message = payload["text"]
             sender_phone = payload.get("from", {}).get("phone_number", "unknown")
         else:
-            print(f"❌ [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] Formato de mensaje no reconocido")
+            logger.warning("[T-MOBILE] Unrecognized message format")
             return jsonify({"error": "Message format not recognized"}), 400
 
-        print(f"📩 [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] SMS desde {sender_phone}: {raw_message}")
+        logger.info(f"[T-MOBILE] SMS from {sender_phone}: {raw_message}")
 
         # Buscar un número de 6-8 dígitos en cualquier parte del mensaje
         # T-Mobile también usa códigos de 6-8 dígitos
@@ -425,9 +422,7 @@ def receive_tmobile_sms():
             with tmobile_code_lock:
                 tmobile_code_storage = {"code": code, "timestamp": datetime.now(), "used": False}
 
-            print(
-                f"✅ [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] Código 2FA capturado: {code} (desde {sender_phone})"
-            )
+            logger.info(f"[T-MOBILE] 2FA code captured: {code} (from {sender_phone})")
             return jsonify(
                 {
                     "status": "code saved",
@@ -438,13 +433,11 @@ def receive_tmobile_sms():
                 }
             )
 
-        print(
-            f"❌ [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] No se encontró código de 6-8 dígitos en: {raw_message}"
-        )
+        logger.warning(f"[T-MOBILE] No 6-8 digit code found in: {raw_message}")
         return jsonify({"status": "no code found in message", "carrier": "tmobile"})
 
     except Exception as e:
-        print(f"💥 [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] Error procesando SMS: {str(e)}")
+        logger.error(f"[T-MOBILE] Error processing SMS: {str(e)}")
         return jsonify({"error": f"Error processing SMS: {str(e)}", "carrier": "tmobile"}), 500
 
 
@@ -499,7 +492,7 @@ def consume_tmobile_code():
         code = tmobile_code_storage["code"]
         tmobile_code_storage["used"] = True
 
-        print(f"🎯 [T-MOBILE] [{datetime.now().strftime('%H:%M:%S')}] Código consumido: {code}")
+        logger.info(f"[T-MOBILE] Code consumed: {code}")
         return jsonify(
             {
                 "code": code,
@@ -557,20 +550,20 @@ def health_check():
 
 
 if __name__ == "__main__":
-    print(f"🚀 SMS 2FA Webhook iniciado en puerto 8000")
-    print(f"📱 Endpoints disponibles:")
-    print(f"   POST /sms - Recibir SMS (Bell)")
-    print(f"   GET /code - Obtener código disponible (Bell)")
-    print(f"   POST /code/consume - Consumir código (Bell)")
-    print(f"   POST /verizon/sms - Recibir SMS (Verizon)")
-    print(f"   GET /verizon/code - Obtener código disponible (Verizon)")
-    print(f"   POST /verizon/code/consume - Consumir código (Verizon)")
-    print(f"   POST /att/sms - Recibir SMS (AT&T)")
-    print(f"   GET /att/code - Obtener código disponible (AT&T)")
-    print(f"   POST /att/code/consume - Consumir código (AT&T)")
-    print(f"   POST /tmobile/sms - Recibir SMS (T-Mobile)")
-    print(f"   GET /tmobile/code - Obtener código disponible (T-Mobile)")
-    print(f"   POST /tmobile/code/consume - Consumir código (T-Mobile)")
-    print(f"   GET /status - Estado del webhook")
-    print(f"   GET /health - Health check")
+    logger.info("SMS 2FA Webhook started on port 8000")
+    logger.info("Available endpoints:")
+    logger.info("   POST /sms - Receive SMS (Bell)")
+    logger.info("   GET /code - Get available code (Bell)")
+    logger.info("   POST /code/consume - Consume code (Bell)")
+    logger.info("   POST /verizon/sms - Receive SMS (Verizon)")
+    logger.info("   GET /verizon/code - Get available code (Verizon)")
+    logger.info("   POST /verizon/code/consume - Consume code (Verizon)")
+    logger.info("   POST /att/sms - Receive SMS (AT&T)")
+    logger.info("   GET /att/code - Get available code (AT&T)")
+    logger.info("   POST /att/code/consume - Consume code (AT&T)")
+    logger.info("   POST /tmobile/sms - Receive SMS (T-Mobile)")
+    logger.info("   GET /tmobile/code - Get available code (T-Mobile)")
+    logger.info("   POST /tmobile/code/consume - Consume code (T-Mobile)")
+    logger.info("   GET /status - Webhook status")
+    logger.info("   GET /health - Health check")
     app.run(host="0.0.0.0", port=8000, debug=False)

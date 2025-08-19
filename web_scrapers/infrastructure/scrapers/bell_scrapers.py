@@ -1,4 +1,5 @@
 import calendar
+import logging
 import os
 import time
 from datetime import datetime
@@ -19,10 +20,11 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
-    """Scraper de reportes mensuales para Bell."""
+    """Monthly reports scraper for Bell."""
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.report_dictionary = {
             "cost_overview": None,
             "enhanced_user_profile_report": None,
@@ -45,7 +47,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         """Busca la sección de archivos con reintento automático en caso de error de caché."""
         for attempt in range(max_retries + 1):
             try:
-                print(f"🔍 Buscando sección de archivos (intento {attempt + 1}/{max_retries + 1})")
+                self.logger.info(f"Searching for files section (attempt {attempt + 1}/{max_retries + 1})")
 
                 # Look for reports
                 report_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/nav[1]/ul[1]/li[4]/a[1]"
@@ -55,16 +57,16 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 # e-report (click)
                 ereport_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/nav[1]/ul[1]/li[4]/div[1]/ul[1]/li[1]/a[1]/h3[1]"
                 current_url: str = self.browser_wrapper.get_current_url()
-                print(f"current url: {current_url}")
+                self.logger.debug(f"Current url: {current_url}")
                 self.browser_wrapper.click_and_switch_to_new_tab(ereport_xpath, 60000)
 
                 # DETECTAR ERROR DE CACHÉ: Verificar que el header esté disponible
                 if not self._verify_ereport_header_available():
-                    print("⚠️ Potencial error de caché detectado en e-reports")
+                    self.logger.warning("Potential cache error detected in e-reports")
                     # if attempt > max_retries:
-                    #     print("🔧 Iniciando recuperación de caché...")
+                    #     self.logger.info("Starting cache recovery...")
                     #     if self._handle_cache_recovery():
-                    #         print("✅ Recuperación exitosa, reintentando...")
+                    #         self.logger.info("Recovery successful, retrying...")
                     #         continue
                     #     else:
                     #         print("❌ Recuperación falló")
@@ -81,17 +83,17 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(30)
 
-                print("✅ Sección de archivos encontrada exitosamente")
+                self.logger.info("Files section found successfully")
                 return {"section": "monthly_reports", "ready_for_download": True}
 
             except Exception as e:
-                print(f"❌ Error en intento {attempt + 1}: {str(e)}")
+                self.logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
                 try:
                     if self.browser_wrapper.get_tab_count() > 1:
                         self.browser_wrapper.close_current_tab()
                         self.browser_wrapper.switch_to_previous_tab()
                 except:
-                    print("❌ No se pudo cerrar la ventana anterior y pasar a la tab anterior")
+                    self.logger.error("Could not close previous window and switch to previous tab")
 
                 if attempt < max_retries:
                     # print("🔧 Iniciando recuperación por excepción...")
@@ -114,20 +116,20 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             is_available = self.browser_wrapper.is_element_visible(header_xpath, timeout=60000)
 
             if is_available:
-                print("✅ Header de e-reports disponible")
+                self.logger.info("E-reports header available")
                 return True
             else:
-                print("⚠️ Header de e-reports no disponible - posible error de caché")
+                self.logger.warning("E-reports header not available - possible cache error")
                 return False
 
         except Exception as e:
-            print(f"❌ Error verificando header: {e}")
+            self.logger.error(f"Error verifying header: {e}")
             return False
 
     def _handle_cache_recovery(self) -> bool:
         """Maneja la recuperación cuando se detecta error de caché."""
         try:
-            print("🧹 Iniciando limpieza de datos del navegador...")
+            self.logger.info("Starting browser data cleanup...")
 
             # Cerrar pestañas adicionales y regresar a main
             if self.browser_wrapper.get_tab_count() > 1:
@@ -140,14 +142,14 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # Notificar que necesitamos re-autenticación
             # La sesión se perdió automáticamente por la limpieza de datos
-            print("🔄 Datos limpiados - la sesión se perdió y se requiere re-login automático")
+            self.logger.info("Data cleaned - session lost and automatic re-login required")
 
             # El SessionManager detectará automáticamente que la sesión no está activa
             # cuando se llame al siguiente método del scraper
             return True
 
         except Exception as e:
-            print(f"❌ Error en recuperación de caché: {e}")
+            self.logger.error(f"Error in cache recovery: {e}")
             return False
 
     def _download_files(
@@ -175,7 +177,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     billing_cycle_file_map[slug] = bcf
                     slug_order.append(slug)
                     report_name = slug_to_report_name.get(slug, slug)
-                    print(f"📋 Mapeando BillingCycleFile ID {bcf.id} -> Slug: '{slug}' -> Reporte: '{report_name}'")
+                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{slug}' -> Report: '{report_name}'")
 
         standard_report_dropdown_xpath = "/html/body/div[3]/div/div/div[1]/div[1]/div/div[1]/div[1]/div[1]/select"
         left_date_dropdown_xpath = "/html[1]/body[1]/div[3]/div[1]/div[1]/div[1]/div[2]/div[2]/div[2]/div[1]/div[7]/div[1]/div[2]/div[1]/select[1]"
@@ -194,41 +196,41 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 report_name = slug_to_report_name[slug]
                 if report_name in report_types:
                     report_value = report_types[report_name]
-                    print(f"🔄 Procesando slug '{slug}' -> reporte: {report_name}")
+                    self.logger.info(f"Processing slug '{slug}' -> report: {report_name}")
                     selected_option = self.browser_wrapper.get_text(standard_report_dropdown_xpath)
                     if not selected_option or report_name.lower() != selected_option.lower():
                         self.browser_wrapper.select_dropdown_by_value(
                             standard_report_dropdown_xpath, str(report_value)
                         )
                     time.sleep(2)
-                    print(f"start date text to select: {start_date_text}, end date text to select: {end_date_text}")
+                    self.logger.debug(f"Start date text to select: {start_date_text}, end date text to select: {end_date_text}")
                     self.browser_wrapper.select_dropdown_option(left_date_dropdown_xpath, start_date_text)
                     self.browser_wrapper.select_dropdown_option(right_date_dropdown_xpath, end_date_text)
-                    print(f"dates selected: from: {start_date_text}, to: {end_date_text}")
+                    self.logger.debug(f"Dates selected: from: {start_date_text}, to: {end_date_text}")
                     self.browser_wrapper.click_element(apply_button_xpath)
                     self.browser_wrapper.wait_for_page_load()
                     time.sleep(5)
                     self.browser_wrapper.click_element(excel_image_xpath)
                     time.sleep(10)
                     generated_slugs_order.append(slug)
-                    print(
-                        f"✅ Slug '{slug}' ({report_name}) solicitado (posición {len(generated_slugs_order)} en cola)"
+                    self.logger.info(
+                        f"Slug '{slug}' ({report_name}) requested (position {len(generated_slugs_order)} in queue)"
                     )
                 else:
-                    print(f"⚠️ Reporte '{report_name}' para slug '{slug}' no encontrado en report_types")
+                    self.logger.warning(f"Report '{report_name}' for slug '{slug}' not found in report_types")
             else:
-                print(f"⚠️ Slug '{slug}' no encontrado en slug_to_report_name mapping")
+                self.logger.warning(f"Slug '{slug}' not found in slug_to_report_name mapping")
 
-        print(f"📋 Orden de slugs generados: {generated_slugs_order}")
+        self.logger.info(f"Order of generated slugs: {generated_slugs_order}")
 
         time.sleep(60 * 5)
         try:
-            print("📥 Esperando que aparezca la tabla de descargas...")
+            self.logger.info("Waiting for downloads table to appear...")
             table_xpath = "/html/body/div[4]/div[2]/div/table"
             self.browser_wrapper.wait_for_element(table_xpath, timeout=120000)
             time.sleep(5)
 
-            print("✅ Tabla de descargas encontrada. Iniciando descarga de los primeros 3 archivos...")
+            self.logger.info("Downloads table found. Starting download of first 3 files...")
 
             records_to_download = len(generated_slugs_order)
             for i in range(records_to_download, 0, -1):
@@ -241,35 +243,35 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     current_report_name = slug_to_report_name.get(current_slug) if current_slug else None
 
                     corresponding_bcf = billing_cycle_file_map.get(current_slug) if current_slug else None
-                    print(f"📄 Descargando archivo #{i} -> Slug: '{current_slug}' -> Reporte: '{current_report_name}'")
+                    self.logger.info(f"Downloading file #{i} -> Slug: '{current_slug}' -> Report: '{current_report_name}'")
                     if corresponding_bcf:
-                        print(f"    📋 Asociado con BillingCycleFile ID: {corresponding_bcf.id}")
+                        self.logger.info(f"    Associated with BillingCycleFile ID: {corresponding_bcf.id}")
                     else:
-                        print(f"    ⚠️ No se encontró BillingCycleFile para mapear")
+                        self.logger.warning(f"    BillingCycleFile not found for mapping")
 
                     # XPath específico para cada fila: /html/body/div[4]/div[2]/div/table/tbody/tr[i]/td[1]/a
                     download_link_xpath = f"/html/body/div[4]/div[2]/div/table/tbody/tr[{i}]/td[1]/a"
 
                     # Verificar que el enlace existe antes de hacer clic
                     if not self.browser_wrapper.find_element_by_xpath(download_link_xpath, timeout=5000):
-                        print(f"⚠️ No se encontró enlace de descarga para archivo #{i}")
+                        self.logger.warning(f"Download link not found for file #{i}")
                         continue
 
                     # Obtener el texto del enlace para logging
                     try:
                         link_text = self.browser_wrapper.get_text(download_link_xpath)
-                        print(f"🔗 Descargando: {link_text}")
+                        self.logger.info(f"Downloading: {link_text}")
                     except:
-                        print(f"🔗 Descargando archivo en fila #{i}")
+                        self.logger.info(f"Downloading file in row #{i}")
 
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                         download_link_xpath, timeout=30000
                     )
-                    print("downloaded_file_path: ", downloaded_file_path)
+                    self.logger.debug(f"Downloaded file path: {downloaded_file_path}")
 
                     if downloaded_file_path:
                         actual_file_name = os.path.basename(downloaded_file_path)
-                        print(f"✅ Archivo descargado exitosamente: {actual_file_name}")
+                        self.logger.info(f"File downloaded successfully: {actual_file_name}")
 
                         # Crear FileDownloadInfo con mapeo al BillingCycleFile
                         file_download_info = FileDownloadInfo(
@@ -283,14 +285,14 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
                         # Imprimir confirmación del mapeo
                         if corresponding_bcf:
-                            print(
-                                f"    ✅ MAPEO CONFIRMADO: {actual_file_name} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{current_slug}' -> {current_report_name})"
+                            self.logger.info(
+                                f"    MAPPING CONFIRMED: {actual_file_name} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{current_slug}' -> {current_report_name})"
                             )
                         else:
-                            print(f"    ⚠️ Archivo descargado sin mapeo específico de BillingCycleFile")
+                            self.logger.warning(f"    File downloaded without specific BillingCycleFile mapping")
 
                     else:
-                        print(f"⚠️ expect_download_and_click falló para archivo #{i}, intentando método tradicional...")
+                        self.logger.warning(f"expect_download_and_click failed for file #{i}, trying traditional method...")
                         self.browser_wrapper.click_element(download_link_xpath)
                         time.sleep(5)
                         estimated_filename = (
@@ -308,32 +310,32 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                         )
                         downloaded_files.append(file_download_info)
 
-                        print(f"📥 Descarga iniciada (método tradicional): {estimated_filename}")
+                        self.logger.info(f"Download started (traditional method): {estimated_filename}")
                         if corresponding_bcf:
-                            print(
-                                f"    ✅ MAPEO CONFIRMADO: {estimated_filename} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{current_slug}' -> {current_report_name})"
+                            self.logger.info(
+                                f"    MAPPING CONFIRMED: {estimated_filename} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{current_slug}' -> {current_report_name})"
                             )
 
                     # Pequeña pausa entre descargas
                     time.sleep(5)
                 except Exception as e:
-                    print(f"❌ Error al intentar descargar archivo #{i}: {str(e)}")
+                    self.logger.error(f"Error trying to download file #{i}: {str(e)}")
                     continue
 
             # Imprimir resumen final de mapeos
-            print(f"\n🎯 RESUMEN FINAL DE MAPEO DE ARCHIVOS:")
-            print(f"   Total archivos descargados: {len(downloaded_files)}")
+            self.logger.info(f"\nFINAL FILE MAPPING SUMMARY:")
+            self.logger.info(f"   Total files downloaded: {len(downloaded_files)}")
             for idx, file_info in enumerate(downloaded_files, 1):
                 if file_info.billing_cycle_file:
                     bcf = file_info.billing_cycle_file
                     slug = bcf.carrier_report.slug if hasattr(bcf, "carrier_report") and bcf.carrier_report else "N/A"
                     report_name = slug_to_report_name.get(slug, slug) if slug != "N/A" else "N/A"
-                    print(
+                    self.logger.info(
                         f"   [{idx}] {file_info.file_name} -> BillingCycleFile ID {bcf.id} (Slug: '{slug}' -> {report_name})"
                     )
                 else:
-                    print(f"   [{idx}] {file_info.file_name} -> SIN MAPEO")
-            print(f"🎯 =====================================\n")
+                    self.logger.info(f"   [{idx}] {file_info.file_name} -> NO MAPPING")
+            self.logger.info(f"=====================================")
 
             self.browser_wrapper.close_current_tab()
             time.sleep(2)
@@ -341,46 +343,47 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self._reset_to_main_screen()
             return downloaded_files
         except Exception as e:
-            print(f"❌ Error general al procesar la tabla de descargas: {e}")
+            self.logger.error(f"General error processing downloads table: {e}")
             return downloaded_files
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
         try:
-            print("🔄 Reseteando a pantalla inicial de Bell...")
+            self.logger.info("Resetting to Bell initial screen...")
             logo_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[1]"
             self.browser_wrapper.click_element(logo_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            print("✅ Reset a Bell completado")
+            self.logger.info("Reset to Bell completed")
         except Exception as e:
-            print(f"❌ Error en reset de Bell: {str(e)}")
+            self.logger.error(f"Error in Bell reset: {str(e)}")
 
 
 class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
-    """Scraper de uso diario para Bell."""
+    """Daily usage scraper for Bell."""
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos de uso diario en el portal de Bell."""
         try:
-            # Determinar si necesita selección de cuenta (Version 1) o ya está preseleccionada (Version 2)
+            # Determine if account selection is needed (Version 1) or already preselected (Version 2)
             account_selection_header_xpath = (
                 "/html/body/div[1]/main/div[1]/div/div/div/account-selection/div[2]/section/div[1]/header/div/h1"
             )
 
-            # Verificar si aparece el header de selección de cuenta
+            # Check if account selection header appears
             account_selection_needed = self.browser_wrapper.find_element_by_xpath(
                 account_selection_header_xpath, timeout=5000
             )
 
             if account_selection_needed:
-                print("🔍 Version 1: Se requiere selección de cuenta")
+                self.logger.info("Version 1: Account selection required")
                 self._handle_account_selection(billing_cycle)
             else:
-                print("🔍 Version 2: Cuenta ya preseleccionada, continuando directo")
+                self.logger.info("Version 2: Account already preselected, continuing direct")
 
             # Parte común: Navegar a usage details y configurar dropdown
             self._navigate_to_usage_details()
@@ -388,12 +391,12 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             return {"section": "daily_usage", "ready_for_download": True}
 
         except Exception as e:
-            print(f"❌ Error en _find_files_section: {str(e)}")
+            self.logger.error(f"Error in _find_files_section: {str(e)}")
             return None
 
     def _handle_account_selection(self, billing_cycle: BillingCycle):
         """Maneja la selección de cuenta cuando es necesaria (Version 1)."""
-        print("📋 Ejecutando selección de cuenta...")
+        self.logger.info("Executing account selection...")
 
         # Buscar cuenta por número
         search_input_xpath = "/html[1]/body[1]/div[1]/main[1]/div[1]/div[1]/div[1]/div[1]/account-selection[1]/div[2]/section[1]/div[2]/global-search[1]/div[1]/section[2]/div[1]/div[1]/account-search[1]/div[1]/div[1]/div[1]/input[1]"
@@ -408,11 +411,11 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         select_account_xpath = "/html[1]/body[1]/div[1]/main[1]/div[1]/div[1]/div[1]/div[1]/account-selection[1]/div[2]/section[1]/div[2]/global-search[1]/div[1]/section[3]/div[1]/search[1]/div[2]/div[1]/div[2]/table[1]/tbody[1]/tr[1]/td[9]/button[1]"
         self.browser_wrapper.click_element(select_account_xpath)
         time.sleep(5)
-        print("✅ Cuenta seleccionada exitosamente")
+        self.logger.info("Account selected successfully")
 
     def _navigate_to_usage_details(self):
         """Navega a usage details y configura el dropdown (parte común)."""
-        print("🔄 Navegando a usage details...")
+        self.logger.info("Navigating to usage details...")
 
         # usage header (hover)
         usage_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/nav[1]/ul[1]/li[2]/a[1]"
@@ -424,7 +427,7 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         self.browser_wrapper.click_element(usage_details_xpath)
         self.browser_wrapper.wait_for_page_load()
         time.sleep(60)  # Esperar 60 segundos como especificado
-        print("✅ Sección de reportes encontrada")
+        self.logger.info("Reports section found")
 
         # Configurar dropdown con lógica de fallback
         self._configure_data_share_dropdown()
@@ -436,16 +439,16 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
         try:
             # Intentar primero con "Medium Business Data Share"
-            print("🔄 Intentando seleccionar 'Medium Business Data Share'...")
+            self.logger.info("Trying to select 'Medium Business Data Share'...")
             self.browser_wrapper.select_dropdown_option(dropdown_xpath, "Medium Business Data Share")
-            print("✅ 'Medium Business Data Share' seleccionado")
+            self.logger.info("'Medium Business Data Share' selected")
         except Exception as e:
-            print("⚠️ 'Medium Business Data Share' no disponible, intentando 'Corp Business Data Share'...")
+            self.logger.warning("'Medium Business Data Share' not available, trying 'Corp Business Data Share'...")
             try:
                 self.browser_wrapper.select_dropdown_option(dropdown_xpath, "Corp Business Data Share")
-                print("✅ 'Corp Business Data Share' seleccionado")
+                self.logger.info("'Corp Business Data Share' selected")
             except Exception as e2:
-                print(f"❌ Error al configurar dropdown: {str(e2)}")
+                self.logger.error(f"Error configuring dropdown: {str(e2)}")
                 raise e2
 
         self.browser_wrapper.wait_for_page_load()
@@ -459,9 +462,9 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         # Obtener el BillingCycleDailyUsageFile del billing_cycle
         daily_usage_file = billing_cycle.daily_usage_files[0] if billing_cycle.daily_usage_files else None
         if daily_usage_file:
-            print(f"📋 Mapeando archivo Daily Usage -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
+            self.logger.info(f"Mapping Daily Usage file -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
         else:
-            print("⚠️ No se encontró BillingCycleDailyUsageFile para mapear")
+            self.logger.warning("BillingCycleDailyUsageFile not found for mapping")
 
         try:
             # download tab: (click) - usando nuevos XPaths
@@ -497,38 +500,39 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
             # Confirmar mapeo
             if daily_usage_file:
-                print(
-                    f"✅ MAPEO CONFIRMADO: {suggested_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                self.logger.info(
+                    f"MAPPING CONFIRMED: {suggested_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
                 )
             else:
-                print(f"⚠️ Archivo descargado sin mapeo específico de BillingCycleDailyUsageFile")
+                self.logger.warning(f"File downloaded without specific BillingCycleDailyUsageFile mapping")
 
             # Reset a pantalla inicial usando el logo
             self._reset_to_main_screen()
 
             return downloaded_files
         except Exception as e:
-            print(f"❌ Error al descargar archivo Daily Usage: {str(e)}")
+            self.logger.error(f"Error downloading Daily Usage file: {str(e)}")
             return downloaded_files
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
         try:
-            print("🔄 Reseteando a pantalla inicial de Bell...")
+            self.logger.info("Resetting to Bell initial screen...")
             logo_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[1]"
             self.browser_wrapper.click_element(logo_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            print("✅ Reset a Bell completado")
+            self.logger.info("Reset to Bell completed")
         except Exception as e:
-            print(f"❌ Error en reset de Bell: {str(e)}")
+            self.logger.error(f"Error in Bell reset: {str(e)}")
 
 
 class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
-    """Scraper de facturas PDF para Bell."""
+    """PDF invoice scraper for Bell."""
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de facturas PDF en el portal de Bell."""
@@ -536,15 +540,15 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             # Navegar a la sección de billing y download PDF
             self._navigate_to_pdf_section()
 
-            # Determinar si necesita selección de cuenta (Version 1) o ya está preseleccionada (Version 2)
+            # Determine if account selection is needed (Version 1) or already preselected (Version 2)
             search_input_xpath = "/html[1]/body[1]/div[1]/main[1]/div[1]/uxp-flow[1]/div[2]/account-selection[1]/div[2]/section[1]/div[1]/account-selection-global-search[1]/div[1]/div[2]/section[2]/div[1]/div[1]/account-search[1]/div[1]/div[1]/div[1]/input[1]"
             account_selection_needed = self.browser_wrapper.find_element_by_xpath(search_input_xpath, timeout=10000)
 
             if account_selection_needed:
-                print("🔍 Version 1: Se requiere selección de cuenta")
+                self.logger.info("Version 1: Account selection required")
                 self._handle_pdf_account_selection(billing_cycle)
             else:
-                print("🔍 Version 2: Cuenta ya preseleccionada, continuando directo")
+                self.logger.info("Version 2: Account already preselected, continuing direct")
 
             # Parte común: Configurar opciones de descarga de PDF
             self._configure_pdf_download_options(billing_cycle)
@@ -552,12 +556,12 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             return {"section": "pdf_invoices", "ready_for_download": True}
 
         except Exception as e:
-            print(f"❌ Error en _find_files_section: {str(e)}")
+            self.logger.error(f"Error in _find_files_section: {str(e)}")
             return None
 
     def _navigate_to_pdf_section(self):
         """Navega a la sección de descarga de PDF (parte inicial común)."""
-        print("🔄 Navegando a sección de descarga PDF...")
+        self.logger.info("Navigating to PDF download section...")
 
         # billing tab (hover)
         billing_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/nav[1]/ul[1]/li[3]/a[1]"
@@ -569,11 +573,11 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         self.browser_wrapper.click_element(download_pdf_xpath)
         self.browser_wrapper.wait_for_page_load()
         time.sleep(5)
-        print("✅ Navegación a PDF completada")
+        self.logger.info("Navigation to PDF completed")
 
     def _handle_pdf_account_selection(self, billing_cycle: BillingCycle):
         """Maneja la selección de cuenta cuando es necesaria (Version 1)."""
-        print("📋 Ejecutando selección de cuenta para PDF...")
+        self.logger.info("Executing account selection for PDF...")
 
         # search input (enter billing_cycle.account.number)
         search_input_xpath = "/html[1]/body[1]/div[1]/main[1]/div[1]/uxp-flow[1]/div[2]/account-selection[1]/div[2]/section[1]/div[1]/account-selection-global-search[1]/div[1]/div[2]/section[2]/div[1]/div[1]/account-search[1]/div[1]/div[1]/div[1]/input[1]"
@@ -594,11 +598,11 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         self.browser_wrapper.click_element(continue_xpath)
         self.browser_wrapper.wait_for_page_load()
         time.sleep(5)
-        print("✅ Cuenta seleccionada exitosamente")
+        self.logger.info("Account selected successfully")
 
     def _configure_pdf_download_options(self, billing_cycle: BillingCycle):
         """Configura las opciones de descarga de PDF (parte común)."""
-        print("🔄 Configurando opciones de descarga PDF...")
+        self.logger.info("Configuring PDF download options...")
 
         # Verificar que estamos en la página correcta
         complete_invoice_radiobtn_xpath = (
@@ -613,34 +617,34 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         )
         self.browser_wrapper.click_element(complete_invoice_label_xpath)
         time.sleep(5)
-        print("✅ Complete invoice seleccionado")
+        self.logger.info("Complete invoice selected")
 
         # Seleccionar fecha más cercana al end_date del billing_cycle
         self._select_closest_date_checkbox(billing_cycle)
 
     def _select_closest_date_checkbox(self, billing_cycle: BillingCycle):
         """Selecciona el checkbox de fecha más cercano al end_date del billing_cycle."""
-        print("📅 Seleccionando fecha más cercana...")
+        self.logger.info("Selecting closest date...")
 
         target_month = billing_cycle.end_date.month
         target_year = billing_cycle.end_date.year
         target_month_name = calendar.month_name[target_month]
         target_period = f"{target_month_name} {target_year}"
 
-        print(f"🎯 Buscando checkbox para: {target_period}")
+        self.logger.info(f"Searching checkbox for: {target_period}")
 
         try:
             # Buscar por texto exacto en el label
             checkbox_xpath = f"//label[contains(., '{target_period}')]/span[1]"
             if self.browser_wrapper.find_element_by_xpath(checkbox_xpath, timeout=3000):
                 self.browser_wrapper.click_element(checkbox_xpath)
-                print(f"✅ Checkbox seleccionado para: {target_period}")
+                self.logger.info(f"Checkbox selected for: {target_period}")
                 return
         except:
-            print(f"⚠️ No se encontró checkbox exacto para {target_period}")
+            self.logger.warning(f"Exact checkbox not found for {target_period}")
 
         try:
-            print("🔍 Buscando checkboxes disponibles...")
+            self.logger.info("Searching for available checkboxes...")
             # Buscar todos los checkboxes disponibles en la sección
             checkboxes_section_xpath = (
                 "/html/body/div[1]/main/div[1]/uxp-flow/div[3]/download-options/div/div/section[2]"
@@ -649,25 +653,25 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             # Como fallback, usar el primer checkbox disponible
             fallback_checkbox_xpath = f"{checkboxes_section_xpath}//div[@class='grd-col-1-4'][1]//label/span[1]"
             self.browser_wrapper.click_element(fallback_checkbox_xpath)
-            print("✅ Checkbox fallback seleccionado (primera opción disponible)")
+            self.logger.info("Fallback checkbox selected (first available option)")
         except Exception as e:
-            print(f"❌ Error al seleccionar checkbox de fecha: {str(e)}")
+            self.logger.error(f"Error selecting date checkbox: {str(e)}")
             raise e
 
         time.sleep(5)
 
     def _handle_pdf_exit_flow(self):
         """Maneja el flujo de salida específico para PDF downloads."""
-        print("🔄 Ejecutando flujo de salida PDF...")
+        self.logger.info("Executing PDF exit flow...")
 
         try:
             # return to back to my account (click)
             back_to_account_xpath = "/html/body/div[1]/header/div/div/div/div[3]/div[1]/div/app-header/button[2]"
             self.browser_wrapper.click_element(back_to_account_xpath)
-            print("✅ Botón 'back to my account' clickeado")
+            self.logger.info("'Back to my account' button clicked")
 
             # wait 30 seconds
-            print("⏳ Esperando 30 segundos...")
+            self.logger.info("Waiting 30 seconds...")
             time.sleep(30)
 
             # click to leave page
@@ -676,14 +680,14 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                     "/html/body/div[1]/header/div/div/div/div[3]/div[1]/div/app-header/div/div/div/div/div/button[2]"
                 )
                 self.browser_wrapper.click_element(leave_page_xpath)
-                print("✅ Botón 'leave page' clickeado")
+                self.logger.info("'Leave page' button clicked")
             except Exception as e:
-                print("leave button didn't appear, you should see initial site")
+                self.logger.info("Leave button didn't appear, you should see initial site")
             time.sleep(3)  # Pausa adicional antes del reset
-            print("✅ Flujo de salida PDF completado")
+            self.logger.info("PDF exit flow completed")
 
         except Exception as e:
-            print(f"⚠️ Error en flujo de salida PDF: {str(e)} - continuando con reset...")
+            self.logger.warning(f"Error in PDF exit flow: {str(e)} - continuing with reset...")
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
@@ -694,9 +698,9 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         # Obtener el BillingCyclePDFFile del billing_cycle
         pdf_file = billing_cycle.pdf_files[0] if billing_cycle.pdf_files else None
         if pdf_file:
-            print(f"📋 Mapeando archivo PDF Invoice -> BillingCyclePDFFile ID {pdf_file.id}")
+            self.logger.info(f"Mapping PDF Invoice file -> BillingCyclePDFFile ID {pdf_file.id}")
         else:
-            print("⚠️ No se encontró BillingCyclePDFFile para mapear")
+            self.logger.warning("BillingCyclePDFFile not found for mapping")
 
         try:
             # download button (click) - usando nuevos XPaths
@@ -704,10 +708,10 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 "/html/body/div[1]/main/div[1]/uxp-flow/div[2]/download-options/div/div/div/div/button[2]"
             )
             self.browser_wrapper.click_element(download_button_xpath)
-            print("✅ Botón de descarga inicial clickeado")
+            self.logger.info("Initial download button clicked")
 
             # wait 2 minutes for button to appear then click - usando nuevos XPaths
-            print("⏳ Esperando 2 minutos para que aparezca el botón de descarga final...")
+            self.logger.info("Waiting 2 minutes for final download button to appear...")
             final_download_button_xpath = (
                 "/html/body/div[1]/main/div[1]/uxp-flow/div[3]/confirmation/div/div/section[1]/button[1]"
             )
@@ -717,14 +721,14 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                 final_download_button_xpath, timeout=30000
             )
-            print("downloaded_file_path: ", downloaded_file_path)
+            self.logger.debug(f"Downloaded file path: {downloaded_file_path}")
 
             if downloaded_file_path:
                 actual_file_name = os.path.basename(downloaded_file_path)
-                print(f"✅ Archivo descargado exitosamente: {actual_file_name}")
+                self.logger.info(f"File downloaded successfully: {actual_file_name}")
 
                 if actual_file_name.lower().endswith(".zip"):
-                    print("🔍 Archivo ZIP detectado, procediendo a extraer...")
+                    self.logger.info("ZIP file detected, proceeding to extract...")
                     extracted_files = self._extract_zip_files(downloaded_file_path)
                     if extracted_files:
                         for i, extracted_file_path in enumerate(extracted_files):
@@ -742,13 +746,13 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                             # Confirmar mapeo para cada archivo extraído
                             if pdf_file:
-                                print(
-                                    f"✅ MAPEO CONFIRMADO: {extracted_file_name} -> BillingCyclePDFFile ID {pdf_file.id}"
+                                self.logger.info(
+                                    f"MAPPING CONFIRMED: {extracted_file_name} -> BillingCyclePDFFile ID {pdf_file.id}"
                                 )
                             else:
-                                print(f"⚠️ Archivo extraído sin mapeo específico de BillingCyclePDFFile")
+                                self.logger.warning(f"Extracted file without specific BillingCyclePDFFile mapping")
                     else:
-                        print("❌ No se pudieron extraer archivos del ZIP")
+                        self.logger.error("Could not extract files from ZIP")
                         # Usar el ZIP original como fallback
                         file_info = FileDownloadInfo(
                             file_id=pdf_file.id if pdf_file else 1,
@@ -759,7 +763,7 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                         )
                         downloaded_files.append(file_info)
                 else:
-                    print("📄 Archivo regular detectado (no es ZIP)")
+                    self.logger.info("Regular file detected (not ZIP)")
                     file_info = FileDownloadInfo(
                         file_id=pdf_file.id if pdf_file else 1,
                         file_name=actual_file_name,
@@ -771,11 +775,11 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                     # Confirmar mapeo
                     if pdf_file:
-                        print(f"✅ MAPEO CONFIRMADO: {actual_file_name} -> BillingCyclePDFFile ID {pdf_file.id}")
+                        self.logger.info(f"MAPPING CONFIRMED: {actual_file_name} -> BillingCyclePDFFile ID {pdf_file.id}")
                     else:
-                        print(f"⚠️ Archivo descargado sin mapeo específico de BillingCyclePDFFile")
+                        self.logger.warning(f"File downloaded without specific BillingCyclePDFFile mapping")
             else:
-                print("⚠️ expect_download_and_click falló para PDF, usando método fallback...")
+                self.logger.warning("expect_download_and_click failed for PDF, using fallback method...")
                 self.browser_wrapper.click_element(final_download_button_xpath)
                 time.sleep(5)
 
@@ -791,9 +795,9 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                     pdf_file=pdf_file,
                 )
                 downloaded_files.append(file_info)
-                print(f"📥 Descarga iniciada (método tradicional): {estimated_filename}")
-                print(
-                    "⚠️ Nota: Si el archivo descargado es ZIP, extraerlo manualmente o usar la función _extract_zip_files"
+                self.logger.info(f"Download started (traditional method): {estimated_filename}")
+                self.logger.warning(
+                    "Note: If downloaded file is ZIP, extract manually or use _extract_zip_files function"
                 )
 
             # Flujo de salida específico para PDF
@@ -805,17 +809,17 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             return downloaded_files
 
         except Exception as e:
-            print(f"❌ Error al descargar archivo PDF: {str(e)}")
+            self.logger.error(f"Error downloading PDF file: {str(e)}")
             return downloaded_files
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de Bell usando el logo."""
         try:
-            print("🔄 Reseteando a pantalla inicial de Bell...")
+            self.logger.info("Resetting to Bell initial screen...")
             logo_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/a[1]"
             self.browser_wrapper.click_element(logo_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            print("✅ Reset a Bell completado")
+            self.logger.info("Reset to Bell completed")
         except Exception as e:
-            print(f"❌ Error en reset de Bell: {str(e)}")
+            self.logger.error(f"Error in Bell reset: {str(e)}")

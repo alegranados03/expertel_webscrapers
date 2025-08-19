@@ -1,0 +1,21 @@
+# This file contains all the print statement replacements needed
+replacements = [
+    ('                print(f"❌ Error en intento {attempt + 1}: {str(e)}")', '                self.logger.error(f"Error on attempt {attempt + 1}: {str(e)}")'),
+    ('                    print("❌ No se pudo cerrar la ventana anterior y pasar a la tab anterior")', '                    self.logger.error("Could not close previous window and switch to previous tab")'),
+    ('                print("✅ Header de e-reports disponible")', '                self.logger.info("E-reports header available")'),
+    ('                print("⚠️ Header de e-reports no disponible - posible error de caché")', '                self.logger.warning("E-reports header not available - possible cache error")'),
+    ('            print(f"❌ Error verificando header: {e}")', '            self.logger.error(f"Error verifying header: {e}")'),
+    ('            print("🧹 Iniciando limpieza de datos del navegador...")', '            self.logger.info("Starting browser data cleanup...")'),
+    ('            print("🔄 Datos limpiados - la sesión se perdió y se requiere re-login automático")', '            self.logger.info("Data cleaned - session lost and automatic re-login required")'),
+    ('            print(f"❌ Error en recuperación de caché: {e}")', '            self.logger.error(f"Error in cache recovery: {e}")'),
+    ('                    print(f"📋 Mapeando BillingCycleFile ID {bcf.id} -> Slug: \'{slug}\' -> Reporte: \'{report_name}\'")', '                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: \'{slug}\' -> Report: \'{report_name}\'")'),
+    ('                    print(f"🔄 Procesando slug \'{slug}\' -> reporte: {report_name}")', '                    self.logger.info(f"Processing slug \'{slug}\' -> report: {report_name}")'),
+    ('                    print(f"start date text to select: {start_date_text}, end date text to select: {end_date_text}")', '                    self.logger.debug(f"Start date text to select: {start_date_text}, end date text to select: {end_date_text}")'),
+    ('                    print(f"dates selected: from: {start_date_text}, to: {end_date_text}")', '                    self.logger.debug(f"Dates selected: from: {start_date_text}, to: {end_date_text}")'),
+    ('                    print(\n                        f"✅ Slug \'{slug}\' ({report_name}) solicitado (posición {len(generated_slugs_order)} en cola)"\n                    )', '                    self.logger.info(\n                        f"Slug \'{slug}\' ({report_name}) requested (position {len(generated_slugs_order)} in queue)"\n                    )'),
+    ('                    print(f"⚠️ Reporte \'{report_name}\' para slug \'{slug}\' no encontrado en report_types")', '                    self.logger.warning(f"Report \'{report_name}\' for slug \'{slug}\' not found in report_types")'),
+    ('                print(f"⚠️ Slug \'{slug}\' no encontrado en slug_to_report_name mapping")', '                self.logger.warning(f"Slug \'{slug}\' not found in slug_to_report_name mapping")'),
+    ('        print(f"📋 Orden de slugs generados: {generated_slugs_order}")', '        self.logger.info(f"Order of generated slugs: {generated_slugs_order}")'),
+    ('            print("📥 Esperando que aparezca la tabla de descargas...")', '            self.logger.info("Waiting for downloads table to appear...")'),
+    ('            print("✅ Tabla de descargas encontrada. Iniciando descarga de los primeros 3 archivos...")', '            self.logger.info("Downloads table found. Starting download of first 3 files...")'),
+]
