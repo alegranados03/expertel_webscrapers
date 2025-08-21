@@ -66,25 +66,50 @@ class ScraperJobProcessor:
 
         try:
             # Update status to RUNNING
-            self.scraper_job_service.update_scraper_job_status(
-                scraper_job.id,
-                ScraperJobStatus.RUNNING,
-                f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
-            )
+            # self.scraper_job_service.update_scraper_job_status(
+            #     scraper_job.id,
+            #     ScraperJobStatus.RUNNING,
+            #     f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
+            # )
 
             carrier_enum = CarrierEnum(carrier.name)
             credentials = Credentials(
                 id=credential.id, username=credential.username, password=credential.get_decrypted_password(), carrier=carrier_enum
             )
 
-            # Get browser wrapper from session manager
+            # Intelligent session management and verification
+            if self.session_manager.is_logged_in():
+                current_carrier = self.session_manager.get_current_carrier()
+                current_credentials = self.session_manager.get_current_credentials()
+                self.logger.info(f"Active session for {current_carrier.value if current_carrier else 'Unknown'} with user {current_credentials.username if current_credentials else 'N/A'}")
+                
+                # Check if current session matches required credentials
+                if (current_carrier == credentials.carrier and 
+                    current_credentials and 
+                    current_credentials.id == credentials.id):
+                    self.logger.info("Using existing session - credentials match")
+                    login_success = True
+                else:
+                    self.logger.info("Credentials differ from current session - logging out and re-authenticating")
+                    self.session_manager.logout()
+                    login_success = self.session_manager.login(credentials)
+            else:
+                self.logger.info("No active session - initiating login")
+                login_success = self.session_manager.login(credentials)
+
+            if not login_success:
+                error_msg = "Authentication failed"
+                if self.session_manager.has_error():
+                    error_msg = f"Authentication failed: {self.session_manager.get_error_message()}"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
+
+            self.logger.info("Authentication successful")
+            
+            # Get browser wrapper after successful authentication
             browser_wrapper = self.session_manager.get_browser_wrapper()
             if not browser_wrapper:
-                # Initialize session if needed
-                login_success = self.session_manager.login(credentials)
-                if not login_success:
-                    raise Exception("Failed to login and get browser wrapper")
-                browser_wrapper = self.session_manager.get_browser_wrapper()
+                raise Exception("Failed to get browser wrapper after successful authentication")
 
             # Create scraper using factory (like in example)
             scraper_strategy = self.scraper_factory.create_scraper(
@@ -158,8 +183,9 @@ class ScraperJobProcessor:
 def main():
     """Main processor function"""
     # Setup logging
-    setup_logging(log_level="INFO")
+    setup_logging(log_level="DEBUG")
     logger = get_logger("main")
+    #logger.setLevel("DEBUG")
 
     try:
         logger.info("Starting ScraperJob processor")

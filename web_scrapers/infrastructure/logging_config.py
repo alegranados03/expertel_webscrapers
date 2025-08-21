@@ -56,4 +56,6 @@ def get_logger(name: str = "web_scrapers") -> logging.Logger:
     Returns:
         Logger instance
     """
-    return logging.getLogger(name)
+    base = "web_scrapers"
+    full_name = base if name in (None, "", base) else f"{base}.{name}"
+    return logging.getLogger(full_name)

@@ -24,6 +24,7 @@ from web_scrapers.domain.entities.models import (
     ScraperStatistics,
     Workspace,
 )
+from web_scrapers.domain.enums import FileStatus
 from web_scrapers.domain.enums import ScraperJobStatus
 from web_scrapers.infrastructure.django.models import ScraperJob as DjangoScraperJob
 from web_scrapers.infrastructure.django.repositories import (
@@ -80,7 +81,12 @@ class ScraperJobService:
         else:
             query_filter &= Q(available_at__lte=current_time)
 
-        django_jobs = DjangoScraperJob.objects.filter(query_filter).order_by("available_at")
+        # Order by credential and account to maximize session reuse and reduce login/logout cycles
+        django_jobs = DjangoScraperJob.objects.filter(query_filter).order_by(
+            "scraper_config__credential_id",
+            "scraper_config__account_id",
+            "available_at"
+        )
 
         # Convert Django models to Pydantic entities using repositories
         return [self.scraper_job_repo.to_entity(job) for job in django_jobs]
@@ -123,8 +129,6 @@ class ScraperJobService:
         billing_cycle_files_django = django_job.billing_cycle.billing_cycle_files.select_related(
             "carrier_report"
         ).all()
-        daily_usage_files_django = django_job.billing_cycle.daily_usage_files.all()
-        pdf_files_django = django_job.billing_cycle.pdf_files.all()
 
         # Convert file collections to Pydantic
         billing_cycle_files = []
@@ -135,12 +139,24 @@ class ScraperJobService:
                 file_pydantic.carrier_report = self.carrier_report_repo.to_entity(file_django.carrier_report)
             billing_cycle_files.append(file_pydantic)
 
-        daily_usage_files = [
-            self.daily_usage_file_repo.to_entity(file_django) for file_django in daily_usage_files_django
-        ]
-        pdf_files = [self.pdf_file_repo.to_entity(file_django) for file_django in pdf_files_django]
+        # Create placeholder arrays with single objects for daily and PDF files
+        # These are created as placeholders since actual files don't exist until scraper execution
+        daily_usage_files = [BillingCycleDailyUsageFile(
+            id=1,
+            billing_cycle_id=billing_cycle.id,
+            status=FileStatus.TO_BE_FETCHED,
+            s3_key=None
+        )]
+        
+        pdf_files = [BillingCyclePDFFile(
+            id=1,
+            billing_cycle_id=billing_cycle.id,
+            status=FileStatus.TO_BE_FETCHED,
+            status_comment="Waiting for PDF scraper execution",
+            s3_key=None,
+            pdf_type="invoice"
+        )]
 
-        # Assemble complete BillingCycle structure (like in example)
         billing_cycle.account = account
         billing_cycle.billing_cycle_files = billing_cycle_files
         billing_cycle.daily_usage_files = daily_usage_files

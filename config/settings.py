@@ -141,3 +141,4 @@ STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 ENCRYPTION_KEY = os.environ.get("CRYPTOGRAPHY_KEY", None)
+EIQ_BACKEND_API_KEY = os.environ.get("EIQ_BACKEND_API_KEY")
