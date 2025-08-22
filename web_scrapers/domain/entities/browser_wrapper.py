@@ -56,7 +56,7 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def wait_for_page_load(self, timeout: int = 30000) -> None:
+    def wait_for_page_load(self, timeout: int = 60000) -> None:
         """Espera a que la página cargue completamente."""
         raise NotImplementedError()
 

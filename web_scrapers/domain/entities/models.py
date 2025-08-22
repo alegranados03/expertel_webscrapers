@@ -1,14 +1,17 @@
+import base64
 from datetime import date, datetime
 from typing import List, Optional
+
 from cryptography.fernet import Fernet
-import base64
 from pydantic import BaseModel
 
-from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus, ScraperJobStatus, ScraperType
 from django.conf import settings
+
+from web_scrapers.domain.enums import AccountType, BillingCycleStatus, FileStatus, ScraperJobStatus, ScraperType
 
 SECRET_KEY = settings.ENCRYPTION_KEY.encode()
 cipher = Fernet(SECRET_KEY)
+
 
 class FileDownloadInfo(BaseModel):
     """Information about a file downloaded by a scraper."""
@@ -49,6 +52,7 @@ class Workspace(BaseModel):
     id: Optional[int] = None
     name: str
     client_id: int
+    client: Optional["Client"] = None
 
     model_config = {"from_attributes": True}
 
@@ -71,6 +75,8 @@ class Account(BaseModel):
     account_type: AccountType = AccountType.CORPORATE
     billing_day: int = 15
     description: Optional[str] = None
+    workspace: Optional["Workspace"] = None
+    carrier: Optional["Carrier"] = None
 
     model_config = {"from_attributes": True}
 

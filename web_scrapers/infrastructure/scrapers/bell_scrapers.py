@@ -58,7 +58,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 ereport_xpath = "/html[1]/body[1]/div[1]/header[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/nav[1]/ul[1]/li[4]/div[1]/ul[1]/li[1]/a[1]/h3[1]"
                 current_url: str = self.browser_wrapper.get_current_url()
                 self.logger.debug(f"Current url: {current_url}")
-                self.browser_wrapper.click_and_switch_to_new_tab(ereport_xpath, 60000)
+                self.browser_wrapper.click_and_switch_to_new_tab(ereport_xpath, 90000)
 
                 # DETECTAR ERROR DE CACHÉ: Verificar que el header esté disponible
                 if not self._verify_ereport_header_available():
@@ -81,7 +81,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 )
                 self.browser_wrapper.click_element(standard_reports_xpath)
                 self.browser_wrapper.wait_for_page_load()
-                time.sleep(30)
+                time.sleep(50)
 
                 self.logger.info("Files section found successfully")
                 return {"section": "monthly_reports", "ready_for_download": True}
@@ -113,7 +113,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             header_xpath = (
                 "/html[1]/body[1]/header[1]/div[1]/div[2]/div[1]/div[1]/div[1]/ul[1]/li[2]/div[1]/span[1]/a[1]"
             )
-            is_available = self.browser_wrapper.is_element_visible(header_xpath, timeout=60000)
+            is_available = self.browser_wrapper.is_element_visible(header_xpath, timeout=90000)
 
             if is_available:
                 self.logger.info("E-reports header available")
@@ -177,7 +177,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     billing_cycle_file_map[slug] = bcf
                     slug_order.append(slug)
                     report_name = slug_to_report_name.get(slug, slug)
-                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{slug}' -> Report: '{report_name}'")
+                    self.logger.info(
+                        f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{slug}' -> Report: '{report_name}'"
+                    )
 
         standard_report_dropdown_xpath = "/html/body/div[3]/div/div/div[1]/div[1]/div/div[1]/div[1]/div[1]/select"
         left_date_dropdown_xpath = "/html[1]/body[1]/div[3]/div[1]/div[1]/div[1]/div[2]/div[2]/div[2]/div[1]/div[7]/div[1]/div[2]/div[1]/select[1]"
@@ -203,7 +205,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                             standard_report_dropdown_xpath, str(report_value)
                         )
                     time.sleep(2)
-                    self.logger.debug(f"Start date text to select: {start_date_text}, end date text to select: {end_date_text}")
+                    self.logger.debug(
+                        f"Start date text to select: {start_date_text}, end date text to select: {end_date_text}"
+                    )
                     self.browser_wrapper.select_dropdown_option(left_date_dropdown_xpath, start_date_text)
                     self.browser_wrapper.select_dropdown_option(right_date_dropdown_xpath, end_date_text)
                     self.logger.debug(f"Dates selected: from: {start_date_text}, to: {end_date_text}")
@@ -223,7 +227,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         self.logger.info(f"Order of generated slugs: {generated_slugs_order}")
 
-        time.sleep(60 * 5)
+        time.sleep(60 * 2)
         try:
             self.logger.info("Waiting for downloads table to appear...")
             table_xpath = "/html/body/div[4]/div[2]/div/table"
@@ -243,7 +247,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     current_report_name = slug_to_report_name.get(current_slug) if current_slug else None
 
                     corresponding_bcf = billing_cycle_file_map.get(current_slug) if current_slug else None
-                    self.logger.info(f"Downloading file #{i} -> Slug: '{current_slug}' -> Report: '{current_report_name}'")
+                    self.logger.info(
+                        f"Downloading file #{i} -> Slug: '{current_slug}' -> Report: '{current_report_name}'"
+                    )
                     if corresponding_bcf:
                         self.logger.info(f"    Associated with BillingCycleFile ID: {corresponding_bcf.id}")
                     else:
@@ -292,7 +298,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                             self.logger.warning(f"    File downloaded without specific BillingCycleFile mapping")
 
                     else:
-                        self.logger.warning(f"expect_download_and_click failed for file #{i}, trying traditional method...")
+                        self.logger.warning(
+                            f"expect_download_and_click failed for file #{i}, trying traditional method..."
+                        )
                         self.browser_wrapper.click_element(download_link_xpath)
                         time.sleep(5)
                         estimated_filename = (
@@ -775,7 +783,9 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                     # Confirmar mapeo
                     if pdf_file:
-                        self.logger.info(f"MAPPING CONFIRMED: {actual_file_name} -> BillingCyclePDFFile ID {pdf_file.id}")
+                        self.logger.info(
+                            f"MAPPING CONFIRMED: {actual_file_name} -> BillingCyclePDFFile ID {pdf_file.id}"
+                        )
                     else:
                         self.logger.warning(f"File downloaded without specific BillingCyclePDFFile mapping")
             else:

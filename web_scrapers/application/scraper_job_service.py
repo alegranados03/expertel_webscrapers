@@ -24,8 +24,7 @@ from web_scrapers.domain.entities.models import (
     ScraperStatistics,
     Workspace,
 )
-from web_scrapers.domain.enums import FileStatus
-from web_scrapers.domain.enums import ScraperJobStatus
+from web_scrapers.domain.enums import FileStatus, ScraperJobStatus
 from web_scrapers.infrastructure.django.models import ScraperJob as DjangoScraperJob
 from web_scrapers.infrastructure.django.repositories import (
     AccountRepository,
@@ -83,9 +82,7 @@ class ScraperJobService:
 
         # Order by credential and account to maximize session reuse and reduce login/logout cycles
         django_jobs = DjangoScraperJob.objects.filter(query_filter).order_by(
-            "scraper_config__credential_id",
-            "scraper_config__account_id",
-            "available_at"
+            "scraper_config__credential_id", "scraper_config__account_id", "available_at"
         )
 
         # Convert Django models to Pydantic entities using repositories
@@ -141,21 +138,26 @@ class ScraperJobService:
 
         # Create placeholder arrays with single objects for daily and PDF files
         # These are created as placeholders since actual files don't exist until scraper execution
-        daily_usage_files = [BillingCycleDailyUsageFile(
-            id=1,
-            billing_cycle_id=billing_cycle.id,
-            status=FileStatus.TO_BE_FETCHED,
-            s3_key=None
-        )]
-        
-        pdf_files = [BillingCyclePDFFile(
-            id=1,
-            billing_cycle_id=billing_cycle.id,
-            status=FileStatus.TO_BE_FETCHED,
-            status_comment="Waiting for PDF scraper execution",
-            s3_key=None,
-            pdf_type="invoice"
-        )]
+        daily_usage_files = [
+            BillingCycleDailyUsageFile(
+                id=1, billing_cycle_id=billing_cycle.id, status=FileStatus.TO_BE_FETCHED, s3_key=None
+            )
+        ]
+
+        pdf_files = [
+            BillingCyclePDFFile(
+                id=1,
+                billing_cycle_id=billing_cycle.id,
+                status=FileStatus.TO_BE_FETCHED,
+                status_comment="Waiting for PDF scraper execution",
+                s3_key=None,
+                pdf_type="invoice",
+            )
+        ]
+
+        # Populate relationships
+        workspace.client = client
+        account.workspace = workspace
 
         billing_cycle.account = account
         billing_cycle.billing_cycle_files = billing_cycle_files

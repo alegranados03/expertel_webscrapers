@@ -8,17 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from django.db import transaction
-
 from web_scrapers.domain.entities.models import BillingCycle, FileDownloadInfo
-from web_scrapers.domain.enums import FileStatus
-from web_scrapers.infrastructure.django.enums import BillingCycleStatusChoices, FileStatusChoices
-from web_scrapers.infrastructure.django.models import (
-    BillingCycle as DjangoBillingCycle,
-    BillingCycleDailyUsageFile as DjangoBillingCycleDailyUsageFile,
-    BillingCycleFile as DjangoBillingCycleFile,
-    BillingCyclePDFFile as DjangoBillingCyclePDFFile,
-)
 
 
 class FileUploadService:
@@ -35,16 +25,18 @@ class FileUploadService:
 
     def _get_headers(self, billing_cycle: BillingCycle) -> Dict[str, str]:
         """Gets headers for requests including client and workspace IDs."""
-        # Get workspace and client IDs from billing_cycle relationships
-        workspace_id = billing_cycle.account.workspace.id
-        client_id = billing_cycle.account.workspace.client.id
-
-        return {
+        headers = {
             "x-api-key": self.api_key,
-            "x-client-id": str(client_id),
-            "x-workspace-id": str(workspace_id),
             "Accept": "application/json",
         }
+
+        # Get client_id and workspace_id from billing_cycle relationships
+        if billing_cycle.account and billing_cycle.account.workspace:
+            headers["x-workspace-id"] = str(billing_cycle.account.workspace.id)
+            if billing_cycle.account.workspace.client:
+                headers["x-client-id"] = str(billing_cycle.account.workspace.client.id)
+
+        return headers
 
     def _get_upload_config(
         self, upload_type: str, file_info: FileDownloadInfo, billing_cycle: BillingCycle
@@ -114,22 +106,13 @@ class FileUploadService:
             # Verify response
             if response.status_code in [200, 201]:
                 self.logger.info(f"File {file_info.file_name} uploaded successfully")
-                # Update file status to PROCESSED
-                self._update_file_status(file_info, config, FileStatusChoices.PROCESSED)
                 return True
             else:
                 self.logger.error(f"Error uploading {file_info.file_name}: {response.status_code} - {response.text}")
-                # Update file status to ERROR
-                self._update_file_status(
-                    file_info, config, FileStatusChoices.ERROR, f"Upload failed: {response.status_code}"
-                )
                 return False
 
         except Exception as e:
             self.logger.error(f"Error uploading {upload_type} file {file_info.file_name}: {str(e)}")
-            # Update file status to ERROR
-            if config:  # Only call if config was successfully retrieved
-                self._update_file_status(file_info, config, FileStatusChoices.ERROR, f"Upload error: {str(e)}")
             return False
 
     def upload_files_batch(
@@ -163,53 +146,4 @@ class FileUploadService:
         self.logger.info(f"   Successful: {success_count}/{total_files}")
         self.logger.info(f"   Failed: {total_files - success_count}/{total_files}")
 
-        # Update billing cycle status to PROCESSED if all files uploaded successfully
-        if success_count == total_files:
-            self._update_billing_cycle_status(billing_cycle, BillingCycleStatusChoices.PROCESSED)
-        else:
-            # If some files failed, mark billing cycle as ERROR
-            self._update_billing_cycle_status(billing_cycle, BillingCycleStatusChoices.ERROR)
-
         return success_count == total_files
-
-    def _update_file_status(
-        self, file_info: FileDownloadInfo, config: Dict[str, Any], status: str, comment: Optional[str] = None
-    ) -> None:
-        """Update file status in database. Only updates monthly reports files as daily usage and PDF files don't exist initially."""
-        try:
-            file_attr = config["file_id_attr"]
-
-            # Only update status for monthly reports (billing_cycle_file)
-            # Daily usage and PDF files don't exist initially and are created during upload
-            if file_attr != "billing_cycle_file":
-                self.logger.debug(f"Skipping status update for {file_attr} - files are created during upload process")
-                return
-
-            file_obj = getattr(file_info, file_attr, None)
-
-            if not file_obj:
-                self.logger.warning(f"No file mapping found for {file_info.file_name}")
-                return
-
-            django_file = DjangoBillingCycleFile.objects.get(id=file_obj.id)
-            django_file.status = status
-            if comment:
-                django_file.status_comment = comment
-            django_file.save(update_fields=["status", "status_comment"])
-
-            self.logger.debug(f"Updated {file_attr} {file_obj.id} status to {status}")
-
-        except Exception as e:
-            self.logger.error(f"Error updating file status: {str(e)}")
-
-    def _update_billing_cycle_status(self, billing_cycle: BillingCycle, status: str) -> None:
-        """Update billing cycle status in database."""
-        try:
-            django_billing_cycle = DjangoBillingCycle.objects.get(id=billing_cycle.id)
-            django_billing_cycle.status = status
-            django_billing_cycle.save(update_fields=["status"])
-
-            self.logger.info(f"Updated billing cycle {billing_cycle.id} status to {status}")
-
-        except Exception as e:
-            self.logger.error(f"Error updating billing cycle status: {str(e)}")

@@ -11,6 +11,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from web_scrapers.application.scraper_job_service import ScraperJobService
+from web_scrapers.application.safe_scraper_job_service import SafeScraperJobService
 from web_scrapers.application.session_manager import SessionManager
 from web_scrapers.domain.entities.models import ScraperJobCompleteContext
 from web_scrapers.domain.entities.scraper_factory import ScraperStrategyFactory
@@ -24,7 +25,9 @@ class ScraperJobProcessor:
 
     def __init__(self):
         self.logger = get_logger("scraper_job_processor")
-        self.scraper_job_service = ScraperJobService()
+        # Use SafeScraperJobService to handle async context after Playwright execution
+        original_service = ScraperJobService()
+        self.scraper_job_service = SafeScraperJobService(original_service)
         self.session_manager = SessionManager(browser_type=Navigators.CHROME)
         self.scraper_factory = ScraperStrategyFactory()
 
@@ -66,27 +69,34 @@ class ScraperJobProcessor:
 
         try:
             # Update status to RUNNING
-            # self.scraper_job_service.update_scraper_job_status(
-            #     scraper_job.id,
-            #     ScraperJobStatus.RUNNING,
-            #     f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
-            # )
+            self.scraper_job_service.update_scraper_job_status(
+                scraper_job.id,
+                ScraperJobStatus.RUNNING,
+                f"Starting processing - Carrier: {carrier.name}, Type: {scraper_job.type}",
+            )
 
             carrier_enum = CarrierEnum(carrier.name)
             credentials = Credentials(
-                id=credential.id, username=credential.username, password=credential.get_decrypted_password(), carrier=carrier_enum
+                id=credential.id,
+                username=credential.username,
+                password=credential.get_decrypted_password(),
+                carrier=carrier_enum,
             )
 
             # Intelligent session management and verification
             if self.session_manager.is_logged_in():
                 current_carrier = self.session_manager.get_current_carrier()
                 current_credentials = self.session_manager.get_current_credentials()
-                self.logger.info(f"Active session for {current_carrier.value if current_carrier else 'Unknown'} with user {current_credentials.username if current_credentials else 'N/A'}")
-                
+                self.logger.info(
+                    f"Active session for {current_carrier.value if current_carrier else 'Unknown'} with user {current_credentials.username if current_credentials else 'N/A'}"
+                )
+
                 # Check if current session matches required credentials
-                if (current_carrier == credentials.carrier and 
-                    current_credentials and 
-                    current_credentials.id == credentials.id):
+                if (
+                    current_carrier == credentials.carrier
+                    and current_credentials
+                    and current_credentials.id == credentials.id
+                ):
                     self.logger.info("Using existing session - credentials match")
                     login_success = True
                 else:
@@ -105,7 +115,7 @@ class ScraperJobProcessor:
                 raise Exception(error_msg)
 
             self.logger.info("Authentication successful")
-            
+
             # Get browser wrapper after successful authentication
             browser_wrapper = self.session_manager.get_browser_wrapper()
             if not browser_wrapper:
@@ -185,7 +195,7 @@ def main():
     # Setup logging
     setup_logging(log_level="DEBUG")
     logger = get_logger("main")
-    #logger.setLevel("DEBUG")
+    # logger.setLevel("DEBUG")
 
     try:
         logger.info("Starting ScraperJob processor")
