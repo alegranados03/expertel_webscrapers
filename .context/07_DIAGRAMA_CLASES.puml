@@ -1,0 +1,526 @@
+@startuml ExpertelScraperArchitecture
+
+!define ABSTRACT abstract
+
+left to right direction
+
+' ============================================
+' LAYER: APPLICATION
+' ============================================
+
+package "APPLICATION" {
+    class ScraperJobProcessor {
+        -logger: Logger
+        -scraper_job_service: SafeScraperJobService
+        -session_manager: SessionManager
+        -scraper_factory: ScraperStrategyFactory
+        --
+        +log_statistics(): void
+        +process_scraper_job(job_context, job_number, total_jobs): bool
+        +execute_available_scrapers(): void
+    }
+
+    class SessionManager {
+        -browser_manager: BrowserManager
+        -browser_type: Navigators
+        -session_state: SessionState
+        -_auth_strategies: Dict[Carrier, Type[AuthBaseStrategy]]
+        -_current_auth_strategy: AuthBaseStrategy
+        -_browser_wrapper: BrowserWrapper
+        -_browser: Browser
+        -_context: BrowserContext
+        -_page: Page
+        --
+        +is_logged_in(): bool
+        +get_current_carrier(): Carrier
+        +get_current_credentials(): Credentials
+        +get_session_state(): SessionState
+        +refresh_session_status(): bool
+        +force_logout(): void
+        +has_error(): bool
+        +get_error_message(): str
+        +get_new_browser_wrapper(): BrowserWrapper
+        +get_browser_wrapper(): BrowserWrapper
+        +login(credentials): bool
+        +logout(): bool
+        +cleanup(): void
+        +clear_error(): void
+        +close_all_pages_and_open_new(): void
+        +__enter__(): SessionManager
+        +__exit__(exc_type, exc_val, exc_tb): void
+    }
+
+    class ScraperJobService {
+        -scraper_job_repo: ScraperJobRepository
+        -scraper_config_repo: ScraperConfigRepository
+        -billing_cycle_repo: BillingCycleRepository
+        -credential_repo: CarrierPortalCredentialRepository
+        -account_repo: AccountRepository
+        -carrier_repo: CarrierRepository
+        -workspace_repo: WorkspaceRepository
+        -client_repo: ClientRepository
+        -billing_cycle_file_repo: BillingCycleFileRepository
+        -daily_usage_file_repo: BillingCycleDailyUsageFileRepository
+        -pdf_file_repo: BillingCyclePDFFileRepository
+        -carrier_report_repo: CarrierReportRepository
+        --
+        +get_available_scraper_jobs(include_null_available_at): List[ScraperJob]
+        +get_scraper_job_with_complete_context(scraper_job_id): ScraperJobCompleteContext
+        +get_available_jobs_with_complete_context(include_null_available_at): List[ScraperJobCompleteContext]
+        +get_scraper_statistics(): ScraperStatistics
+        +update_scraper_job_status(scraper_job_id, status, log_message): void
+    }
+
+    class SafeScraperJobService {
+        -scraper_job_service: ScraperJobService
+        -logger: Logger
+        --
+        +update_scraper_job_status(scraper_job_id, status, log_message): Union[None, Task]
+        +__getattr__(name): Any
+    }
+
+    SafeScraperJobService --> ScraperJobService: wraps
+    ScraperJobProcessor --> SafeScraperJobService: uses
+    ScraperJobProcessor --> SessionManager: uses
+    ScraperJobProcessor --> ScraperStrategyFactory: uses
+}
+
+' ============================================
+' LAYER: DOMAIN - ENTITIES
+' ============================================
+
+package "DOMAIN.ENTITIES" {
+    class ScraperStrategyFactory {
+        -_strategies: Dict[tuple[Carrier, ScraperType], Type[ScraperBaseStrategy]]
+        --
+        +create_scraper(carrier, scraper_type, browser_wrapper): ScraperBaseStrategy
+    }
+
+    ABSTRACT class AuthBaseStrategy {
+        #browser_wrapper: BrowserWrapper
+        --
+        {abstract}+login(credentials): bool
+        {abstract}+logout(): bool
+        {abstract}+is_logged_in(): bool
+        {abstract}+get_login_url(): str
+        {abstract}+get_logout_xpath(): str
+        {abstract}+get_username_xpath(): str
+        {abstract}+get_password_xpath(): str
+        {abstract}+get_login_button_xpath(): str
+        #_perform_generic_login(credentials): bool
+        #_perform_generic_logout(): bool
+    }
+
+    ABSTRACT class BrowserWrapper {
+        --
+        {abstract}+goto(url, wait_until): void
+        {abstract}+find_element_by_xpath(xpath, timeout): bool
+        {abstract}+click_element(xpath, timeout): void
+        {abstract}+type_text(xpath, text, timeout): void
+        {abstract}+clear_and_type(xpath, text, timeout): void
+        {abstract}+select_dropdown_option(xpath, option_text, timeout): void
+        {abstract}+select_dropdown_by_value(xpath, value, timeout): void
+        {abstract}+get_text(xpath, timeout): str
+        {abstract}+get_attribute(xpath, attribute, timeout): str
+        {abstract}+wait_for_element(xpath, timeout): void
+        {abstract}+wait_for_page_load(timeout): void
+        {abstract}+is_element_visible(xpath, timeout): bool
+        {abstract}+get_current_url(): str
+        {abstract}+take_screenshot(path): void
+        {abstract}+wait_for_navigation(timeout): void
+        {abstract}+press_key(xpath, key, timeout): void
+        {abstract}+hover_element(xpath, timeout): void
+        {abstract}+scroll_to_element(xpath, timeout): void
+        {abstract}+get_page_title(): str
+        {abstract}+reload_page(): void
+        {abstract}+go_back(): void
+        {abstract}+go_forward(): void
+        {abstract}+wait_for_new_tab(timeout): void
+        {abstract}+switch_to_new_tab(): void
+        {abstract}+close_current_tab(): void
+        {abstract}+switch_to_previous_tab(): void
+        {abstract}+switch_to_tab_by_index(index): void
+        {abstract}+get_tab_count(): int
+        {abstract}+clear_browser_data(clear_cookies, clear_storage, clear_cache): void
+        {abstract}+close_all_tabs_except_main(): void
+        {abstract}+get_current_tab_index(): int
+        {abstract}+change_button_attribute(xpath, attribute, value): void
+        {abstract}+expect_download_and_click(xpath, timeout): str
+        {abstract}+click_and_switch_to_new_tab(xpath, timeout): void
+    }
+
+    ABSTRACT class ScraperBaseStrategy {
+        #browser_wrapper: BrowserWrapper
+        #logger: Logger
+        --
+        {abstract}+execute(config, billing_cycle, credentials): ScraperResult
+        #_create_file_mapping(downloaded_files): List[FileMappingInfo]
+        #_extract_zip_files(zip_file_path, extract_to_dir): List[str]
+        #_upload_files_to_endpoint(files, config, billing_cycle): bool
+        #_get_upload_type(): str
+    }
+
+    class MonthlyReportsScraperStrategy {
+        --
+        +execute(config, billing_cycle, credentials): ScraperResult
+        {abstract}#_find_files_section(config, billing_cycle): Any
+        {abstract}#_download_files(files_section, config, billing_cycle): List[FileDownloadInfo]
+    }
+
+    class DailyUsageScraperStrategy {
+        --
+        +execute(config, billing_cycle, credentials): ScraperResult
+        {abstract}#_find_files_section(config, billing_cycle): Any
+        {abstract}#_download_files(files_section, config, billing_cycle): List[FileDownloadInfo]
+    }
+
+    class PDFInvoiceScraperStrategy {
+        --
+        +execute(config, billing_cycle, credentials): ScraperResult
+        {abstract}#_find_files_section(config, billing_cycle): Any
+        {abstract}#_download_files(files_section, config, billing_cycle): List[FileDownloadInfo]
+    }
+
+    MonthlyReportsScraperStrategy --|> ScraperBaseStrategy
+    DailyUsageScraperStrategy --|> ScraperBaseStrategy
+    PDFInvoiceScraperStrategy --|> ScraperBaseStrategy
+
+    class SessionState {
+        -status: SessionStatus
+        -carrier: Carrier
+        -credentials: Credentials
+        -error_message: str
+        --
+        +is_logged_in(): bool
+        +is_logged_out(): bool
+        +is_error(): bool
+        +set_logged_in(carrier, credentials): void
+        +set_logged_out(): void
+        +set_error(error_message): void
+    }
+
+    class Credentials {
+        -id: int
+        -username: str
+        -password: str
+        -carrier: Carrier
+    }
+
+    class ScraperResult {
+        -success: bool
+        -message: str
+        -files: List[FileMappingInfo]
+        -error: str
+        -timestamp: datetime
+    }
+
+    class ScraperJobCompleteContext {
+        -scraper_job: ScraperJob
+        -scraper_config: ScraperConfig
+        -billing_cycle: BillingCycle
+        -credential: CarrierPortalCredential
+        -account: Account
+        -carrier: Carrier
+        -workspace: Workspace
+        -client: Client
+    }
+
+    class FileDownloadInfo {
+        -file_id: int
+        -file_name: str
+        -download_url: str
+        -file_path: str
+        -download_timestamp: datetime
+        -billing_cycle_file: BillingCycleFile
+        -daily_usage_file: BillingCycleDailyUsageFile
+        -pdf_file: BillingCyclePDFFile
+    }
+
+    SessionManager --> SessionState: manages
+    SessionManager --> Credentials: uses
+    SessionManager --> AuthBaseStrategy: instantiates
+    ScraperJobProcessor --> ScraperJobCompleteContext: receives
+    ScraperBaseStrategy --> FileDownloadInfo: returns
+    ScraperBaseStrategy --> ScraperResult: returns
+}
+
+' ============================================
+' LAYER: INFRASTRUCTURE - PLAYWRIGHT
+' ============================================
+
+package "INFRASTRUCTURE.PLAYWRIGHT" {
+    class PlaywrightWrapper {
+        -page: Page
+        --
+        +goto(url, wait_until): void
+        +find_element_by_xpath(xpath, timeout): bool
+        +click_element(xpath, timeout): void
+        +type_text(xpath, text, timeout): void
+        +clear_and_type(xpath, text, timeout): void
+        +select_dropdown_option(xpath, option_text, timeout): void
+        +select_dropdown_by_value(xpath, value, timeout): void
+        +get_text(xpath, timeout): str
+        +get_attribute(xpath, attribute, timeout): str
+        +wait_for_element(xpath, timeout): void
+        +wait_for_page_load(timeout): void
+        +is_element_visible(xpath, timeout): bool
+        +get_current_url(): str
+        +take_screenshot(path): void
+        +wait_for_navigation(timeout): void
+        +press_key(xpath, key, timeout): void
+        +hover_element(xpath, timeout): void
+        +scroll_to_element(xpath, timeout): void
+        +get_page_title(): str
+        +reload_page(): void
+        +go_back(): void
+        +go_forward(): void
+        +wait_for_new_tab(timeout): void
+        +switch_to_new_tab(): void
+        +close_current_tab(): void
+        +switch_to_previous_tab(): void
+        +switch_to_tab_by_index(index): void
+        +get_tab_count(): int
+        +clear_browser_data(clear_cookies, clear_storage, clear_cache): void
+        +close_all_tabs_except_main(): void
+        +get_current_tab_index(): int
+        +change_button_attribute(xpath, attribute, value): void
+        +expect_download_and_click(xpath, timeout): str
+        +click_and_switch_to_new_tab(xpath, timeout): void
+        +refresh(): void
+    }
+
+    PlaywrightWrapper --|> BrowserWrapper
+
+    class BellAuthStrategy {
+        -webhook_url: str
+        --
+        +login(credentials): bool
+        +logout(): bool
+        +is_logged_in(): bool
+        +get_login_url(): str
+        +get_logout_xpath(): str
+        +get_username_xpath(): str
+        +get_password_xpath(): str
+        +get_login_button_xpath(): str
+        -_handle_2fa_if_present(): bool
+        -_process_2fa(verification_input_xpath): bool
+        -_wait_for_sms_code(timeout): str
+    }
+
+    class TelusAuthStrategy {
+        --
+        +login(credentials): bool
+        +logout(): bool
+        +is_logged_in(): bool
+        +get_login_url(): str
+        +get_logout_xpath(): str
+        +get_username_xpath(): str
+        +get_password_xpath(): str
+        +get_login_button_xpath(): str
+    }
+
+    class RogersAuthStrategy
+    class ATTAuthStrategy
+    class TMobileAuthStrategy
+    class VerizonAuthStrategy
+
+    BellAuthStrategy --|> AuthBaseStrategy
+    TelusAuthStrategy --|> AuthBaseStrategy
+    RogersAuthStrategy --|> AuthBaseStrategy
+    ATTAuthStrategy --|> AuthBaseStrategy
+    TMobileAuthStrategy --|> AuthBaseStrategy
+    VerizonAuthStrategy --|> AuthBaseStrategy
+
+    class BrowserManager {
+        {static}-_instance: BrowserManager
+        {static}-_factory: BrowserDriverFactory
+        --
+        +get_browser(browser_type): tuple[Browser, BrowserContext]
+        +cleanup_all(): void
+        +factory: BrowserDriverFactory <<property>>
+    }
+
+    class BrowserDriverFactory {
+        -_driver_builders: Dict[Navigators, Type[NavigatorDriverBuilder]]
+        -_playwright: SyncPlaywright
+        -_browser: Browser
+        -_context: BrowserContext
+        -_page: Page
+        --
+        +get_default_browser_type(): Navigators
+        +get_browser_options(): Dict[str, Any]
+        +create_browser(browser_type): Browser
+        +create_context(browser): BrowserContext
+        +create_page(context): Page
+        +create_full_setup(browser_type): tuple[Browser, BrowserContext]
+        +get_available_browsers(): list[Navigators]
+        +cleanup(): void
+        +__enter__(): BrowserDriverFactory
+        +__exit__(exc_type, exc_val, exc_tb): void
+    }
+
+    BrowserManager --> BrowserDriverFactory: uses
+    SessionManager --> BrowserManager: instantiates
+}
+
+' ============================================
+' LAYER: INFRASTRUCTURE - SCRAPERS
+' ============================================
+
+package "INFRASTRUCTURE.SCRAPERS" {
+    class BellMonthlyReportsScraperStrategy {
+        -report_dictionary: Dict[str, str]
+        -_current_credentials: Credentials
+        -_reauthentication_callback: Callable
+        --
+        +set_reauthentication_callback(callback): void
+        #_find_files_section(config, billing_cycle): Any
+        #_find_files_section_with_retry(config, billing_cycle, max_retries): Any
+        #_download_files(files_section, config, billing_cycle): List[FileDownloadInfo]
+        -_verify_ereport_header_available(): bool
+        -_handle_cache_recovery(): bool
+    }
+
+    class BellDailyUsageScraperStrategy
+    class BellPDFInvoiceScraperStrategy
+
+    class TelusMonthlyReportsScraperStrategy
+    class TelusDailyUsageScraperStrategy
+    class TelusPDFInvoiceScraperStrategy
+
+    class RogersMonthlyReportsScraperStrategy
+    class RogersDailyUsageScraperStrategy
+    class RogersPDFInvoiceScraperStrategy
+
+    class ATTMonthlyReportsScraperStrategy
+    class ATTDailyUsageScraperStrategy
+    class ATTPDFInvoiceScraperStrategy
+
+    class TMobileMonthlyReportsScraperStrategy
+    class TMobileDailyUsageScraperStrategy
+    class TMobilePDFInvoiceScraperStrategy
+
+    class VerizonMonthlyReportsScraperStrategy
+    class VerizonDailyUsageScraperStrategy
+    class VerizonPDFInvoiceScraperStrategy
+
+    BellMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    BellDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    BellPDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    TelusMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    TelusDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    TelusPDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    RogersMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    RogersDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    RogersPDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    ATTMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    ATTDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    ATTPDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    TMobileMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    TMobileDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    TMobilePDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    VerizonMonthlyReportsScraperStrategy --|> MonthlyReportsScraperStrategy
+    VerizonDailyUsageScraperStrategy --|> DailyUsageScraperStrategy
+    VerizonPDFInvoiceScraperStrategy --|> PDFInvoiceScraperStrategy
+
+    ScraperStrategyFactory --> BellMonthlyReportsScraperStrategy: creates
+    ScraperStrategyFactory --> BellDailyUsageScraperStrategy: creates
+    ScraperStrategyFactory --> BellPDFInvoiceScraperStrategy: creates
+    ScraperStrategyFactory --> TelusMonthlyReportsScraperStrategy: creates
+    ScraperStrategyFactory --> TelusDailyUsageScraperStrategy: creates
+    ScraperStrategyFactory --> TelusPDFInvoiceScraperStrategy: creates
+}
+
+' ============================================
+' LAYER: INFRASTRUCTURE - SERVICES
+' ============================================
+
+package "INFRASTRUCTURE.SERVICES" {
+    class FileUploadService {
+        -api_base_url: str
+        -api_key: str
+        -logger: Logger
+        --
+        +upload_files_batch(files, billing_cycle, upload_type, additional_data): bool
+        -_get_headers(billing_cycle): Dict[str, str]
+        -_get_upload_config(upload_type, file_info, billing_cycle): Dict[str, Any]
+        -_upload_single_file(file_info, billing_cycle, upload_type): bool
+    }
+
+    ScraperBaseStrategy --> FileUploadService: uses
+}
+
+' ============================================
+' ENUMS
+' ============================================
+
+package "ENUMS" {
+    enum Carrier {
+        BELL
+        TELUS
+        ROGERS
+        ATT
+        TMOBILE
+        VERIZON
+    }
+
+    enum ScraperType {
+        MONTHLY_REPORTS
+        DAILY_USAGE
+        PDF_INVOICE
+    }
+
+    enum ScraperJobStatus {
+        PENDING
+        RUNNING
+        SUCCESS
+        ERROR
+    }
+
+    enum SessionStatus {
+        LOGGED_OUT
+        LOGGED_IN
+        ERROR
+    }
+
+    enum Navigators {
+        CHROME
+        FIREFOX
+        EDGE
+        SAFARI
+    }
+
+    ScraperStrategyFactory --> Carrier
+    ScraperStrategyFactory --> ScraperType
+    SessionManager --> Carrier
+    SessionManager --> SessionStatus
+}
+
+' ============================================
+' RELATIONSHIPS
+' ============================================
+
+BellAuthStrategy --> PlaywrightWrapper: uses
+SessionManager --> PlaywrightWrapper: creates
+ScraperBaseStrategy --> BrowserWrapper: uses
+
+note right of ScraperJobProcessor
+  **PUNTO DE ENTRADA PRINCIPAL (main.py)**
+
+  Flujo:
+  1. Inicializar ScraperJobProcessor
+  2. Obtener trabajos disponibles
+  3. Para cada trabajo:
+     - Verificar/actualizar sesión
+     - Crear scraper con Factory
+     - Ejecutar scraper
+     - Actualizar estado BD
+  4. Reportar resumen
+end note
+
+@enduml

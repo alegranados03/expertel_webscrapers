@@ -1,0 +1,214 @@
+================================================================================
+                  DOCUMENTACIÓN - EXPERTEL WEB SCRAPERS
+================================================================================
+
+GENERADO: 2025-11-28
+RAMA: feature/session-manager-and-strategies
+STATUS: ✅ COMPLETO Y ACTUALIZADO
+
+================================================================================
+                           DOCUMENTOS DISPONIBLES
+================================================================================
+
+📘 COMIENZA AQUÍ:
+  → 00_README.md (361 líneas)
+    • Índice y guía de uso
+    • Cómo usar esta documentación
+    • Preguntas frecuentes
+
+📚 COMPRENSIÓN GENERAL:
+  → 01_ARQUITECTURA_COMPLETA.md (711 líneas)
+    • Estructura de capas (Domain, Application, Infrastructure)
+    • Componentes principales
+    • Patrones de diseño
+    • Dependencias
+
+  → 05_RESUMEN_EJECUTIVO.md (409 líneas)
+    • Resumen de 30 segundos
+    • Cómo funciona el sistema
+    • Ventajas arquitectónicas
+    • Próximos pasos
+
+🎯 EJEMPLOS PRÁCTICOS:
+  → 02_ESCENARIOS_EJEMPLO.md (771 líneas)
+    • 8 escenarios reales
+    • Bell Monthly Reports (caso exitoso)
+    • Cambios de sesión
+    • Manejo de errores
+    • 2FA SMS timeout
+
+🔧 DETALLES TÉCNICOS:
+  → 03_FLUJOS_TECNICOS.md (1,021 líneas)
+    • Flujo de autenticación por carrier
+    • Flujo de scraping base
+    • Gestión de sesiones
+    • Extracción y procesamiento
+    • Carga de archivos
+    • 2FA SMS
+
+📖 REFERENCIA:
+  → 04_COMPONENTES_CLAVE.md (1,032 líneas)
+    • SessionManager (200 líneas)
+    • Browser Wrapper (278 líneas, 30+ métodos)
+    • Scraper Strategies (18 totales)
+    • File Upload Service (150 líneas)
+    • Configuración y variables de entorno
+    • Entidades Pydantic
+
+🌳 ESTRUCTURA:
+  → 06_ARBOL_PROYECTO.md (522 líneas)
+    • Árbol completo del proyecto
+    • Mapa de responsabilidades
+    • Flujo de datos
+    • Patrones implementados
+    • Tamaño y complejidad
+
+📊 DIAGRAMA DE CLASES:
+  → 07_DIAGRAMA_CLASES.puml (PlantUML)
+    • Diagrama completo de todas las clases
+    • Relaciones de herencia (--|>)
+    • Relaciones de composición (-->)
+    • Punto de entrada y flujo
+    • 60 clases, 27 relaciones de herencia
+
+  → 08_GUIA_DIAGRAMA_CLASES.md (Guía)
+    • Cómo usar el archivo .puml
+    • Explicación de cada capa
+    • Tabla de símbolos
+    • Flujo de inicio detallado
+    • Preguntas frecuentes
+
+================================================================================
+                            ESTADÍSTICAS
+================================================================================
+
+DOCUMENTACIÓN:
+  • Total líneas: 4,827
+  • Total archivos: 7
+  • Promedio por archivo: 689 líneas
+
+PROYECTO:
+  • Archivos Python: 89
+  • Líneas de código: ~10,386
+  • Operadores: 6 (Bell, Telus, Rogers, AT&T, T-Mobile, Verizon)
+  • Estrategias: 18 (6 × 3)
+  • Métodos browser: 30+
+  • Patrones: 7
+
+================================================================================
+                         CÓMO USAR ESTA DOCUMENTACIÓN
+================================================================================
+
+PARA NUEVOS DESARROLLADORES:
+  1. Leer: 00_README.md
+  2. Leer: 01_ARQUITECTURA_COMPLETA.md
+  3. Leer: 02_ESCENARIOS_EJEMPLO.md
+  4. Usar: 04_COMPONENTES_CLAVE.md como referencia
+
+PARA DEBUGGEAR PROBLEMAS:
+  1. Revisar: 03_FLUJOS_TECNICOS.md (componente específico)
+  2. Buscar: logs esperados en 02_ESCENARIOS_EJEMPLO.md
+  3. Verificar: métodos en 04_COMPONENTES_CLAVE.md
+
+PARA AGREGAR FEATURES:
+  1. Estudiar: patrones en 01_ARQUITECTURA_COMPLETA.md
+  2. Buscar: estrategia similar en 04_COMPONENTES_CLAVE.md
+  3. Seguir: flujo técnico en 03_FLUJOS_TECNICOS.md
+
+PARA AGREGAR UN NUEVO CARRIER:
+  1. Copiar: estructura de carrier similar
+  2. Implementar: 3 estrategias (Monthly, Daily, PDF)
+  3. Crear: AuthStrategy específica
+  4. Registrar: en ScraperStrategyFactory
+  5. Actualizar: enums si es necesario
+
+================================================================================
+                              PUNTO DE ENTRADA
+================================================================================
+
+ARCHIVO: main.py
+CLASE: ScraperJobProcessor
+
+EJECUCIÓN:
+  $ python main.py
+
+FLUJO:
+  1. Inicializar SessionManager, Services, Factory
+  2. Obtener trabajos disponibles de BD
+  3. Para cada trabajo:
+     - Verificar/actualizar sesión
+     - Crear scraper dinámicamente
+     - Ejecutar scraper
+     - Actualizar estado en BD
+  4. Reportar resumen
+
+================================================================================
+                          CONFIGURACIÓN CRÍTICA
+================================================================================
+
+Variables de Entorno Requeridas:
+  EIQ_BACKEND_API_BASE_URL   → URL API externa
+  EIQ_BACKEND_API_KEY         → Bearer token
+  DB_HOST, DB_NAME, etc       → Configuración BD
+  DJANGO_SECRET_KEY           → Secret key Django
+  CRYPTOGRAPHY_KEY            → Fernet key para encriptación
+
+Setup:
+  1. cp .env.example .env
+  2. Editar .env con valores reales
+  3. python manage.py migrate
+  4. python main.py
+
+================================================================================
+                         PRÓXIMAS ACTUALIZACIONES
+================================================================================
+
+Esta documentación debe revisarse cuando:
+  □ Se agregue un nuevo carrier
+  □ Se cambien patrones arquitectónicos
+  □ Se migre a nueva versión de dependencias
+  □ Se agreguen nuevas capas o servicios
+  □ Se realicen cambios significativos
+
+================================================================================
+                              ARCHIVOS CLAVE
+================================================================================
+
+config/settings.py                     → Configuración Django (4,339 líneas)
+web_scrapers/application/session_manager.py    → Orquestación sesiones
+web_scrapers/infrastructure/services/file_upload_service.py → Carga universal
+web_scrapers/infrastructure/scrapers/*.py      → Implementaciones por carrier
+authenticator_webhook/sms2fa.py        → Servicio SMS 2FA (Flask)
+CLAUDE.md                              → Guía para Claude Code (existente)
+
+================================================================================
+                              ESTADO DEL PROYECTO
+================================================================================
+
+✅ DOCUMENTACIÓN: Completa
+✅ CÓDIGO: Production-ready
+✅ ARQUITECTURA: Clean Architecture implementada
+✅ PATRONES: 7 patrones de diseño
+✅ TESTING: Preparado para tests
+✅ EXTENSIBILIDAD: Fácil agregar carriers
+✅ LOGGING: Centralizado y detallado
+✅ SEGURIDAD: Encriptación de credenciales, JWT, API keys
+
+================================================================================
+                            TECNOLOGÍAS
+================================================================================
+
+Framework:     Django 5.1.4
+Automatización: Playwright 1.53.0
+Validación:    Pydantic 2.10.3
+Formato:       Black (línea 119)
+Type Checking: MyPy strict mode
+VCS:           Git (rama: feature/session-manager-and-strategies)
+
+================================================================================
+
+Para más información, ver: 00_README.md
+Última revisión: 2025-11-28
+Status: ✅ Completo y Actualizado
+
+================================================================================

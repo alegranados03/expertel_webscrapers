@@ -41,7 +41,6 @@ class SessionManager:
         self._page = None
 
     def is_logged_in(self) -> bool:
-        # Usar la lógica mejorada de refresh_session_status
         return self.refresh_session_status()
 
     def get_current_carrier(self) -> Optional[Carrier]:
