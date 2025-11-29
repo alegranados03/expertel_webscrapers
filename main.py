@@ -16,7 +16,7 @@ from web_scrapers.application.session_manager import SessionManager
 from web_scrapers.domain.entities.models import ScraperJobCompleteContext
 from web_scrapers.domain.entities.scraper_factory import ScraperStrategyFactory
 from web_scrapers.domain.entities.session import Carrier as CarrierEnum, Credentials
-from web_scrapers.domain.enums import ScraperJobStatus, Navigators
+from web_scrapers.domain.enums import ScraperJobStatus, Navigators, ScraperType
 from web_scrapers.infrastructure.logging_config import get_logger, setup_logging
 
 
@@ -83,6 +83,8 @@ class ScraperJobProcessor:
                 carrier=carrier_enum,
             )
 
+            scraper_type = ScraperType(scraper_job.type)
+
             # Intelligent session management and verification
             if self.session_manager.is_logged_in():
                 current_carrier = self.session_manager.get_current_carrier()
@@ -102,10 +104,10 @@ class ScraperJobProcessor:
                 else:
                     self.logger.info("Credentials differ from current session - logging out and re-authenticating")
                     self.session_manager.logout()
-                    login_success = self.session_manager.login(credentials)
+                    login_success = self.session_manager.login(credentials, scraper_type=scraper_type)
             else:
                 self.logger.info("No active session - initiating login")
-                login_success = self.session_manager.login(credentials)
+                login_success = self.session_manager.login(credentials, scraper_type=scraper_type)
 
             if not login_success:
                 error_msg = "Authentication failed"

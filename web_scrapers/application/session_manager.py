@@ -4,7 +4,7 @@ from typing import Dict, Optional, Type
 
 from web_scrapers.domain.entities.auth_strategies import AuthBaseStrategy
 from web_scrapers.domain.entities.session import Carrier, Credentials, SessionState, SessionStatus
-from web_scrapers.domain.enums import Navigators
+from web_scrapers.domain.enums import Navigators, ScraperType
 from web_scrapers.infrastructure.playwright.auth_strategies import (
     ATTAuthStrategy,
     BellAuthStrategy,
@@ -25,16 +25,30 @@ class SessionManager:
         self.browser_type = browser_type
         self.session_state = SessionState()
 
-        self._auth_strategies: Dict[Carrier, Type[AuthBaseStrategy]] = {
-            Carrier.BELL: BellAuthStrategy,
-            Carrier.TELUS: TelusAuthStrategy,
-            Carrier.ROGERS: RogersAuthStrategy,
-            Carrier.ATT: ATTAuthStrategy,
-            Carrier.TMOBILE: TMobileAuthStrategy,
-            Carrier.VERIZON: VerizonAuthStrategy,
+        self._auth_strategies: dict[tuple[Carrier, ScraperType], Type[AuthBaseStrategy]] = {
+            (Carrier.BELL, ScraperType.MONTHLY_REPORTS): BellAuthStrategy,
+            (Carrier.BELL, ScraperType.DAILY_USAGE): BellAuthStrategy,
+            (Carrier.BELL, ScraperType.PDF_INVOICE): BellAuthStrategy,
+            (Carrier.TELUS, ScraperType.MONTHLY_REPORTS): TelusAuthStrategy,
+            (Carrier.TELUS, ScraperType.DAILY_USAGE): TelusAuthStrategy,
+            (Carrier.TELUS, ScraperType.PDF_INVOICE): TelusAuthStrategy,
+            (Carrier.ROGERS, ScraperType.MONTHLY_REPORTS): RogersAuthStrategy,
+            (Carrier.ROGERS, ScraperType.DAILY_USAGE): RogersAuthStrategy,
+            (Carrier.ROGERS, ScraperType.PDF_INVOICE): RogersAuthStrategy,
+            (Carrier.ATT, ScraperType.MONTHLY_REPORTS): ATTAuthStrategy,
+            (Carrier.ATT, ScraperType.DAILY_USAGE): ATTAuthStrategy,
+            (Carrier.ATT, ScraperType.PDF_INVOICE): ATTAuthStrategy,
+            (Carrier.TMOBILE, ScraperType.MONTHLY_REPORTS): TMobileAuthStrategy,
+            (Carrier.TMOBILE, ScraperType.DAILY_USAGE): TMobileAuthStrategy,
+            (Carrier.TMOBILE, ScraperType.PDF_INVOICE): TMobileAuthStrategy,
+            (Carrier.VERIZON, ScraperType.MONTHLY_REPORTS): VerizonAuthStrategy,
+            (Carrier.VERIZON, ScraperType.DAILY_USAGE): VerizonAuthStrategy,
+            (Carrier.VERIZON, ScraperType.PDF_INVOICE): VerizonAuthStrategy,
         }
 
         self._current_auth_strategy: Optional[AuthBaseStrategy] = None
+        self._scraper_type: Optional[ScraperType] = None
+        self._current_login_url: Optional[str] = None  # ← NUEVO: guardar URL de login actual
         self._browser_wrapper: Optional[BrowserWrapper] = None
         self._browser = None
         self._context = None
@@ -65,6 +79,8 @@ class SessionManager:
                 if self.session_state.is_logged_in():
                     self.session_state.set_logged_out()
                     self._current_auth_strategy = None
+                    self._scraper_type = None
+                    self._current_login_url = None
                 return False
 
             return is_active
@@ -77,6 +93,8 @@ class SessionManager:
     def force_logout(self) -> None:
         self.session_state.set_logged_out()
         self._current_auth_strategy = None
+        self._scraper_type = None
+        self._current_login_url = None
 
     def has_error(self) -> bool:
         return self.session_state.is_error()
@@ -102,24 +120,49 @@ class SessionManager:
     def get_browser_wrapper(self) -> Optional[BrowserWrapper]:
         return self._browser_wrapper
 
-    def login(self, credentials: Credentials) -> bool:
+    def login(self, credentials: Credentials, scraper_type: ScraperType) -> bool:
         try:
             if self.session_state.is_logged_in():
                 if (
                     self.session_state.carrier == credentials.carrier
                     and self.session_state.credentials
                     and self.session_state.credentials.id == credentials.id
+                    and self._scraper_type == scraper_type
                 ):
                     return True
-                self.logout()
 
-            auth_strategy_class = self._auth_strategies.get(credentials.carrier)
+                # Si cambió el scraper_type, verificar si la URL de login también cambió
+                if self._scraper_type != scraper_type:
+                    auth_strategy_class = self._auth_strategies.get((credentials.carrier, scraper_type))
+                    if auth_strategy_class:
+                        # Crear instancia temporal para obtener la URL sin afectar la actual
+                        temp_strategy = auth_strategy_class(self._browser_wrapper)
+                        new_login_url = temp_strategy.get_login_url()
+
+                        # Solo hacer logout si la URL de login cambió
+                        if new_login_url != self._current_login_url:
+                            self.logout()
+                        else:
+                            # La URL es la misma, solo actualizar scraper_type y reutilizar sesión
+                            self._scraper_type = scraper_type
+                            return True
+                    else:
+                        self.logout()
+                else:
+                    self.logout()
+
+            # CAMBIO CLAVE: Búsqueda con tupla (carrier, scraper_type)
+            auth_strategy_class = self._auth_strategies.get((credentials.carrier, scraper_type))
+
             if not auth_strategy_class:
-                error_msg = f"No auth strategy for carrier: {credentials.carrier}"
+                error_msg = f"No auth strategy for carrier: {credentials.carrier}, scraper_type: {scraper_type}"
                 self.session_state.set_error(error_msg)
                 return False
             browser_wrapper = self._initialize_browser()
             self._current_auth_strategy = auth_strategy_class(browser_wrapper)
+            self._scraper_type = scraper_type
+            self._current_login_url = self._current_auth_strategy.get_login_url()  # ← CAMBIO: guardar URL de login
+
             login_success = self._current_auth_strategy.login(credentials)
             if login_success:
                 self.session_state.set_logged_in(carrier=credentials.carrier, credentials=credentials)
@@ -148,6 +191,8 @@ class SessionManager:
             if logout_success:
                 self.session_state.set_logged_out()
                 self._current_auth_strategy = None
+                self._scraper_type = None
+                self._current_login_url = None  # ← CAMBIO: limpiar URL de login
                 return True
             else:
                 error_msg = "Error al hacer logout"
@@ -164,6 +209,8 @@ class SessionManager:
             self.force_logout()
 
         self._current_auth_strategy = None
+        self._scraper_type = None
+        self._current_login_url = None
         self._browser_wrapper = None
 
         if self._page:
