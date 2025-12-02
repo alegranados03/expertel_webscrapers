@@ -16,42 +16,47 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def click_element(self, xpath: str, timeout: int = 10000) -> None:
-        """Hace clic en un elemento identificado por XPath."""
+    def click_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Hace clic en un elemento usando XPath, CSS o pierce según selector_type."""
         raise NotImplementedError()
 
     @abstractmethod
-    def type_text(self, xpath: str, text: str, timeout: int = 10000) -> None:
-        """Escribe texto en un campo identificado por XPath."""
+    def double_click_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Hace doble clic en un elemento usando XPath, CSS o pierce según selector_type."""
         raise NotImplementedError()
 
     @abstractmethod
-    def clear_and_type(self, xpath: str, text: str, timeout: int = 10000) -> None:
+    def type_text(self, selector: str, text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Escribe texto en un campo identificado por un selector."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def clear_and_type(self, selector: str, text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
         """Limpia un campo y escribe texto nuevo."""
         raise NotImplementedError()
 
     @abstractmethod
-    def select_dropdown_option(self, xpath: str, option_text: str, timeout: int = 10000) -> None:
-        """Selecciona una opción de un dropdown por texto."""
+    def select_dropdown_option(self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Selecciona una opción por texto."""
         raise NotImplementedError()
 
     @abstractmethod
-    def select_dropdown_by_value(self, xpath: str, value: str, timeout: int = 10000) -> None:
-        """Selecciona una opción de un dropdown por valor."""
+    def select_dropdown_by_value(self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Selecciona una opción por valor."""
         raise NotImplementedError()
 
     @abstractmethod
-    def get_text(self, xpath: str, timeout: int = 10000) -> str:
+    def get_text(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> str:
         """Obtiene el texto de un elemento."""
         raise NotImplementedError()
 
     @abstractmethod
-    def get_attribute(self, xpath: str, attribute: str, timeout: int = 10000) -> str:
+    def get_attribute(self, selector: str, attribute: str, timeout: int = 10000, selector_type: str = "xpath") -> str:
         """Obtiene un atributo de un elemento."""
         raise NotImplementedError()
 
     @abstractmethod
-    def wait_for_element(self, xpath: str, timeout: int = 10000) -> None:
+    def wait_for_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
         """Espera a que un elemento esté visible."""
         raise NotImplementedError()
 
@@ -61,7 +66,7 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def is_element_visible(self, xpath: str, timeout: int = 5000) -> bool:
+    def is_element_visible(self, selector: str, timeout: int = 5000, selector_type: str = "xpath") -> bool:
         """Verifica si un elemento está visible."""
         raise NotImplementedError()
 
@@ -81,17 +86,17 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def press_key(self, xpath: str, key: str, timeout: int = 10000) -> None:
+    def press_key(self, selector: str, key: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
         """Presiona una tecla en un elemento específico."""
         raise NotImplementedError()
 
     @abstractmethod
-    def hover_element(self, xpath: str, timeout: int = 10000) -> None:
+    def hover_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
         """Hace hover sobre un elemento."""
         raise NotImplementedError()
 
     @abstractmethod
-    def scroll_to_element(self, xpath: str, timeout: int = 10000) -> None:
+    def scroll_to_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
         """Hace scroll hasta un elemento específico."""
         raise NotImplementedError()
 
@@ -164,15 +169,15 @@ class BrowserWrapper(ABC):
 
     @abstractmethod
     def change_button_attribute(self, xpath: str, attribute: str, value: str) -> None:
-        """Cambia cualquier atributo de un botón usando JavaScript."""
+        """Cambia un atributo usando JavaScript."""
         raise NotImplementedError()
 
     @abstractmethod
-    def expect_download_and_click(self, xpath: str, timeout: int = 30000) -> Optional[str]:
-        """Hace clic en un elemento esperando una descarga y retorna la ruta del archivo descargado."""
+    def expect_download_and_click(self, selector: str, timeout: int = 30000, selector_type: str = "xpath") -> Optional[str]:
+        """Hace clic esperando una descarga."""
         raise NotImplementedError()
 
     @abstractmethod
-    def click_and_switch_to_new_tab(self, xpath: str, timeout: int = 10000) -> None:
-        """Hace clic en un enlace que abre una nueva pestaña y cambia el foco automáticamente."""
+    def click_and_switch_to_new_tab(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        """Hace clic en un enlace que abre una nueva pestaña."""
         raise NotImplementedError()

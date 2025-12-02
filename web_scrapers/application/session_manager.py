@@ -8,6 +8,7 @@ from web_scrapers.domain.enums import Navigators, ScraperType
 from web_scrapers.infrastructure.playwright.auth_strategies import (
     ATTAuthStrategy,
     BellAuthStrategy,
+    BellEnterpriseAuthStrategy,
     RogersAuthStrategy,
     TelusAuthStrategy,
     TMobileAuthStrategy,
@@ -26,7 +27,7 @@ class SessionManager:
         self.session_state = SessionState()
 
         self._auth_strategies: dict[tuple[Carrier, ScraperType], Type[AuthBaseStrategy]] = {
-            (Carrier.BELL, ScraperType.MONTHLY_REPORTS): BellAuthStrategy,
+            (Carrier.BELL, ScraperType.MONTHLY_REPORTS): BellEnterpriseAuthStrategy,
             (Carrier.BELL, ScraperType.DAILY_USAGE): BellAuthStrategy,
             (Carrier.BELL, ScraperType.PDF_INVOICE): BellAuthStrategy,
             (Carrier.TELUS, ScraperType.MONTHLY_REPORTS): TelusAuthStrategy,

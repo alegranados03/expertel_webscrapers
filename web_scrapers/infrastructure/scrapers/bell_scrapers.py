@@ -19,8 +19,8 @@ DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
-class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
-    """Monthly reports scraper for Bell."""
+class BellMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
+    """LEGACY: Monthly reports scraper for Bell (old portal). Deprecated - use BellMonthlyReportsScraperStrategy instead."""
 
     def __init__(self, browser_wrapper: BrowserWrapper):
         super().__init__(browser_wrapper)
@@ -365,6 +365,387 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info("Reset to Bell completed")
         except Exception as e:
             self.logger.error(f"Error in Bell reset: {str(e)}")
+
+
+class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
+    """Monthly reports scraper for Bell Enterprise Centre"""
+
+    def __init__(self, browser_wrapper: BrowserWrapper):
+        super().__init__(browser_wrapper)
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.setLevel(logging.DEBUG)
+        self.report_dictionary = {
+            "cost_overview": None,
+            "enhanced_user_profile": None,
+            "usage_overview": None,
+            "invoice_charge": None,
+        }
+
+    def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
+        """Navigate to the My Reports section in Bell Enterprise Centre."""
+        try:
+            self.logger.info("Navigating to Bell Enterprise Centre reports...")
+
+            # Step 1: Click on "My Reports" list item
+            my_reports_xpath = '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button'
+            self.browser_wrapper.click_element(my_reports_xpath, selector_type="css")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(2)
+            self.logger.info("My Reports section opened")
+
+            # Step 2: Click on "Service" sub-menu item
+            service_sub_xpath = "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
+            self.browser_wrapper.click_element(service_sub_xpath, selector_type="css")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(2)
+            self.logger.info("Service sub-menu accessed")
+
+            # Step 3: Click on "Enhanced Mobility Reports" link and switch to new tab
+            enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/section/main/div/div/div/ul/li[1]/a"
+            current_url = self.browser_wrapper.get_current_url()
+            self.logger.debug(f"Current url before clicking Enhanced Mobility: {current_url}")
+
+            # Click and switch to new tab (similar to legacy implementation)
+            self.browser_wrapper.click_and_switch_to_new_tab(enhanced_mobility_xpath, timeout=90000)
+            self.logger.info("Switched to Enhanced Mobility Reports new tab")
+
+            self.logger.info("Waiting 1 minutes for reports interface to load...")
+            time.sleep(60)
+
+            my_workspace_icon_xpath = '/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[3]'
+            self.browser_wrapper.click_element(my_workspace_icon_xpath)
+            self.logger.info("Workspace icon accessed")
+
+            shared_with_me_xpath = '/html[1]/body[1]/div[2]/app-base[1]/section[1]/block-ui[1]/div[1]/div[1]/div[1]/app-workspace[1]/app-ana-page[1]/div[2]/div[1]/div[1]/div[1]/div[1]/app-ws-folder-tree[1]/div[1]/div[1]/p-tree[1]/div[1]/div[1]/ul[1]/p-treenode[2]/li[1]/div[1]/span[3]/span[1]/div[1]'
+            self.browser_wrapper.click_element(shared_with_me_xpath)
+            self.logger.info("Shared With me accessed")
+
+            enhanced_mobility_reports_xpath = '//*[@id="ws-grid__appfolder_0"]'
+            self.browser_wrapper.double_click_element(enhanced_mobility_reports_xpath)
+            self.logger.info("enhanced mobility reports accessed (double-clicked)")
+
+            self.logger.info("Navigation to reports section completed successfully")
+            return {"section": "enterprise_monthly_reports", "ready_for_download": True}
+
+        except Exception as e:
+            self.logger.error(f"Error during navigation to reports: {str(e)}")
+            # Close the new tab if it was opened and return to original tab before failing
+            try:
+                if self.browser_wrapper.get_tab_count() > 1:
+                    self.logger.info("Closing Enhanced Mobility Reports tab due to error...")
+                    self.browser_wrapper.close_current_tab()
+                    time.sleep(2)
+                    self.logger.info("Switched back to original tab after error")
+            except Exception as close_error:
+                self.logger.warning(f"Error closing tab during error recovery: {str(close_error)}")
+            return None
+
+    def _download_files(
+        self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
+    ) -> List[FileDownloadInfo]:
+        """Download files for all 4 reports with account and invoice month filters."""
+        downloaded_files = []
+
+        # Report configuration
+        reports = [
+            {
+                "name": "cost overview report",
+                "slug": "cost_overview",
+                "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
+                "invoice_month_selector": '/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div',
+                "account_selector": '/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div',
+            },
+            {
+                "name": "usage overview report",
+                "slug": "usage_overview",
+                "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
+                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
+                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
+            },
+            {
+                "name": "enhanced user profile report",
+                "slug": "enhanced_user_profile",
+                "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
+                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
+                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
+            },
+            {
+                "name": "invoice charge report",
+                "slug": "invoice_charge",
+                "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
+                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
+                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
+            },
+        ]
+
+        # Mapear BillingCycleFiles por slug
+        billing_cycle_file_map = {}
+        if billing_cycle.billing_cycle_files:
+            for bcf in billing_cycle.billing_cycle_files:
+                if bcf.carrier_report and bcf.carrier_report.slug:
+                    slug = bcf.carrier_report.slug
+                    billing_cycle_file_map[slug] = bcf
+                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{slug}'")
+
+        # Calculate invoice month from billing cycle
+        invoice_month = self._calculate_invoice_month(billing_cycle)
+        self.logger.info(f"Invoice month for filters: {invoice_month}")
+
+        # Get account number for filtering
+        account_number = billing_cycle.account.number if billing_cycle.account else None
+        self.logger.info(f"Account number for filters: {account_number}")
+
+        # Generate each report
+        generated_reports = []
+        for report_config in reports:
+            try:
+                self.logger.info(f"Processing report: {report_config['name']}")
+
+                # Step 1: Click on the report grid by searching for it dynamically
+                self._click_report_by_name(report_config['name'])
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info(f"Report grid clicked for {report_config['name']}")
+
+                # Step 2: Click on the workbook button
+                self.browser_wrapper.click_element(report_config["workbook_button"])
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info(f"Workbook opened for {report_config['name']}")
+
+                # Step 3: Wait 1 minutes for workbook to load
+                self.logger.info("Waiting 1 minutes for workbook interface to load...")
+                time.sleep(60)
+
+                # Step 4: Expand configuration panel
+                expand_config_xpath = "//*[@id='wb-sheet-container']/div/div/div[2]"
+                self.browser_wrapper.click_element(expand_config_xpath)
+                time.sleep(2)
+                self.logger.info("Configuration panel expanded")
+
+                # Step 5: Apply filters (account and invoice month)
+                self._apply_report_filters(report_config["slug"], account_number, invoice_month, report_config)
+
+                # Step 6: Export to Excel
+                self._export_report_to_excel(report_config["slug"])
+
+                generated_reports.append(report_config["slug"])
+                self.logger.info(f"Report '{report_config['name']}' generation completed")
+
+                # Step 7: Return to enhanced reports folder
+                breadcrumb_xpath = "//*[@id='breadcrumb_item_1']"
+                self.browser_wrapper.click_element(breadcrumb_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+
+            except Exception as e:
+                self.logger.error(f"Error processing report '{report_config['name']}': {str(e)}")
+                continue
+
+        self.logger.info(f"All reports generated. Order: {generated_reports}")
+
+        # Step 8: Download files (similar to legacy implementation)
+        # Placeholder - will be implemented in next iteration
+        self.logger.info("File download logic to be implemented next")
+
+        # Step 9: Close the new tab and return to the original tab
+        try:
+            if self.browser_wrapper.get_tab_count() > 1:
+                self.logger.info("Closing Enhanced Mobility Reports tab...")
+                self.browser_wrapper.close_current_tab()
+                time.sleep(2)
+                self.logger.info("Switched back to original tab")
+            else:
+                self.logger.warning("No additional tabs found to close")
+        except Exception as e:
+            self.logger.warning(f"Error closing tab: {str(e)}")
+
+        return downloaded_files
+
+    def _click_report_by_name(self, report_name: str) -> None:
+        """Click on a report by searching for it dynamically in the grid using aria-label.
+
+        This method is more robust than using grid_id because it searches by the report name
+        instead of relying on positional IDs that can change.
+        """
+        try:
+            self.logger.info(f"Searching for report: '{report_name}'...")
+
+            # Try multiple XPath strategies to find the report element
+            # Strategy 1: Search by aria-label containing the report name (case-insensitive via translate)
+            report_xpath = f"//div[contains(@class, 'ws-grid__item') and contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{report_name}')]"
+
+            self.logger.debug(f"Attempting XPath (strategy 1): {report_xpath}")
+
+            try:
+                # Esperar a que el elemento sea visible
+                self.browser_wrapper.wait_for_element(report_xpath, timeout=10000)
+                time.sleep(1)
+                self.logger.info(f"Found report using strategy 1")
+
+            except Exception as e:
+                self.logger.warning(f"Strategy 1 failed: {str(e)}, trying strategy 2...")
+
+                # Strategy 2: Try with role='link' attribute as additional filter
+                report_xpath = f"//div[@role='link'][contains(@class, 'ws-grid__item') and contains(@aria-label, '{report_name}')]"
+                self.logger.debug(f"Attempting XPath (strategy 2): {report_xpath}")
+                self.browser_wrapper.wait_for_element(report_xpath, timeout=10000)
+                time.sleep(1)
+                self.logger.info(f"Found report using strategy 2")
+
+            # Hacer click en el elemento
+            self.browser_wrapper.click_element(report_xpath)
+            time.sleep(1)
+
+            self.logger.info(f"Report '{report_name}' found and clicked successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error clicking report '{report_name}': {str(e)}")
+            raise e
+
+    def _calculate_invoice_month(self, billing_cycle: BillingCycle) -> str:
+        """Calculate the invoice month string from billing cycle end date.
+
+        Returns format like "Oct 2025"
+        """
+        try:
+            end_date = billing_cycle.end_date
+            month_name = end_date.strftime("%b")
+            year = end_date.strftime("%Y")
+            invoice_month = f"{month_name} {year}"
+            return invoice_month
+        except Exception as e:
+            self.logger.error(f"Error calculating invoice month: {str(e)}")
+            return ""
+
+    def _apply_report_filters(self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict) -> None:
+        """Apply account and invoice month filters to the current report.
+
+        Raises exception if filter application fails - caller should abort report processing.
+        """
+        try:
+            # Get selectors from report_config if provided, otherwise use defaults
+            invoice_month_xpath = report_config.get("invoice_month_selector")
+            account_xpath = report_config.get("account_selector")
+
+            # Step 1: Select invoice month (single select)
+            self.logger.info(f"Opening invoice month dropdown for {report_slug}...")
+            self.browser_wrapper.click_element(invoice_month_xpath)
+            time.sleep(2)
+
+            # Find and click the invoice month in the dropdown
+            self._select_month_from_dropdown(invoice_month)
+
+            # Step 2: Select account (multi-select)
+            if account_number:
+                self.logger.info(f"Opening account dropdown for {report_slug}...")
+                self.browser_wrapper.click_element(account_xpath)
+                time.sleep(2)
+
+                # Find and click the account in the dropdown
+                self._select_account_from_dropdown(account_number)
+
+            # Step 3: Click Apply Filters button
+            apply_filters_xpath = "//*[@id='filter_apply_btn']"
+            self.logger.info(f"Clicking Apply Filters for {report_slug}...")
+            self.browser_wrapper.click_element(apply_filters_xpath)
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(60)  # Wait 1 minute for filters to apply
+
+            self.logger.info(f"Filters applied successfully for {report_slug}")
+
+        except Exception as e:
+            self.logger.error(f"Error applying filters for {report_slug}: {str(e)}")
+            raise e
+
+    def _select_month_from_dropdown(self, month_text: str) -> None:
+        """Select a month from the invoice month dropdown (aff-ui-multiselect component)."""
+        try:
+            self.logger.info(f"Looking for month '{month_text}' in dropdown...")
+
+            # XPath para encontrar el li que contiene el texto exacto del mes
+            # Usamos contains() para ser robusto con espacios en blanco
+            month_li_xpath = f"//li[contains(@class, 'list-item')][.//span[contains(@class, 'singleselect-dropdown-item') and contains(., '{month_text}')]]"
+
+            # Esperar a que el elemento sea visible
+            self.browser_wrapper.wait_for_element(month_li_xpath, timeout=10000)
+            time.sleep(1)
+
+            # Hacer click en el item
+            self.browser_wrapper.click_element(month_li_xpath)
+            time.sleep(1)
+
+            self.logger.info(f"Month '{month_text}' selected from dropdown")
+
+        except Exception as e:
+            self.logger.error(f"Error selecting month from dropdown: {str(e)}")
+            raise e
+
+    def _select_account_from_dropdown(self, account_number: str) -> None:
+        """Select an account from the account number dropdown (aff-ui-multiselect component).
+
+        Steps:
+        1. Uncheck "Select all" if it's checked
+        2. Find and check the account checkbox
+        """
+        try:
+            self.logger.info(f"Looking for account '{account_number}' in dropdown...")
+
+            # Step 1: Desmarcar "Select all" si está marcado
+            select_all_checkbox_xpath = "//input[@class='select-all-input ng-star-inserted']"
+            try:
+                is_checked = self.browser_wrapper.page.is_checked(select_all_checkbox_xpath)
+                if is_checked:
+                    self.logger.info("'Select all' is checked, unchecking it...")
+                    self.browser_wrapper.click_element(select_all_checkbox_xpath)
+                    time.sleep(1)
+                    self.logger.info("'Select all' unchecked")
+                else:
+                    self.logger.info("'Select all' is already unchecked")
+            except Exception as e:
+                self.logger.warning(f"Could not verify/uncheck 'Select all': {str(e)}")
+
+            # Step 2: Encontrar y hacer click en el checkbox de la cuenta específica
+            # XPath para encontrar el li que contiene el número de cuenta
+            account_li_xpath = f"//li[contains(@class, 'list-item multiselect-setting')][.//label[contains(., '{account_number}')]]"
+
+            # Esperar a que el elemento sea visible
+            self.browser_wrapper.wait_for_element(account_li_xpath, timeout=10000)
+            time.sleep(1)
+
+            # Encontrar el checkbox dentro del li
+            account_checkbox_xpath = f"{account_li_xpath}//input[@type='checkbox']"
+            self.browser_wrapper.click_element(account_checkbox_xpath)
+            time.sleep(1)
+
+            self.logger.info(f"Account '{account_number}' checkbox checked")
+
+        except Exception as e:
+            self.logger.error(f"Error selecting account from dropdown: {str(e)}")
+            raise e
+
+    def _export_report_to_excel(self, report_slug: str) -> None:
+        """Export the current report to Excel."""
+        try:
+            # Step 1: Click Export button
+            export_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[1]/div/div[3]/app-abi-toolbar/app-global-buttonbar/section/a[1]"
+            self.browser_wrapper.click_element(export_xpath)
+            time.sleep(2)
+
+            # Step 2: Click Excel option
+            excel_xpath = "/html/body/ngb-popover-window/div[2]/div/div[6]/div"
+            self.browser_wrapper.click_element(excel_xpath)
+            time.sleep(2)
+
+            # Step 3: Click Export button in the dialog
+            export_btn_xpath = "//*[@id='btn-bc-export']"
+            self.browser_wrapper.click_element(export_btn_xpath)
+            time.sleep(10)
+
+            self.logger.info(f"Report '{report_slug}' exported to Excel")
+
+        except Exception as e:
+            self.logger.error(f"Error exporting report: {str(e)}")
 
 
 class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):

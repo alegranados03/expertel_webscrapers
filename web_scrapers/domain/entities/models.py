@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import List, Optional
 
 from cryptography.fernet import Fernet
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from django.conf import settings
 

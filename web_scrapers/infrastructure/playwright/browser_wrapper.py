@@ -11,70 +11,83 @@ class PlaywrightWrapper(BrowserWrapper):
     def __init__(self, page: Page):
         self.page = page
 
+    def _resolve_selector(self, selector: str, selector_type: str = "xpath") -> str:
+        strategies = {
+            "xpath":  lambda s: f"xpath={s}",
+            "css":    lambda s: s,
+            "pierce": lambda s: f"pierce={s}",
+        }
+
+        try:
+            return strategies[selector_type](selector)
+        except KeyError:
+            raise ValueError(f"selector_type inválido: {selector_type}")
+
+
     def goto(self, url: str, wait_until: str = "load") -> None:
         self.page.goto(url, wait_until=wait_until)
 
     def find_element_by_xpath(self, xpath: str, timeout: int = 10000) -> bool:
         try:
-            self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
+            resolved = self._resolve_selector(xpath, "xpath")
+            self.page.wait_for_selector(resolved, timeout=timeout)
             return True
         except PlaywrightTimeoutError:
             return False
 
-    def click_element(self, xpath: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        self.page.click(f"xpath={xpath}")
+    def click_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.click(resolved)
 
-    def type_text(self, xpath: str, text: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        self.page.type(f"xpath={xpath}", text)
+    def double_click_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.dblclick(resolved)
 
-    def clear_and_type(self, xpath: str, text: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        locator = self.page.locator(f"xpath={xpath}")
-        locator.focus()
-        locator.dispatch_event("keydown", {"key": text[0]})
-        locator.dispatch_event("keyup", {"key": text[0]})
-        self.page.fill(f"xpath={xpath}", text)
+    def type_text(self, selector: str, text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.type(resolved, text)
 
-    def select_dropdown_option(self, xpath: str, option_text: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        options = self.page.locator(f"xpath={xpath} >> option").all()
-        print("Available options in dropdown:")
-        for option in options:
-            text = option.inner_text()
-            val = option.get_attribute("value")
-            print(f"  Texto: {text} | Valor: {val}")
-        self.page.select_option(f"xpath={xpath}", label=option_text)
+    def clear_and_type(self, selector: str, text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        locator = self.page.locator(resolved)
+        locator.fill(text)
 
-    def select_dropdown_by_value(self, xpath: str, value: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        options = self.page.locator(f"xpath={xpath} >> option").all()
-        print("Available options in dropdown:")
-        for option in options:
-            text = option.inner_text()
-            val = option.get_attribute("value")
-            print(f"  Texto: {text} | Valor: {val}")
-        self.page.select_option(f"xpath={xpath}", value=value)
+    def select_dropdown_option(self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.select_option(resolved, label=option_text)
 
-    def get_text(self, xpath: str, timeout: int = 10000) -> str:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        return self.page.text_content(f"xpath={xpath}") or ""
+    def select_dropdown_by_value(self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.select_option(resolved, value=value)
 
-    def get_attribute(self, xpath: str, attribute: str, timeout: int = 10000) -> str:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        return self.page.get_attribute(f"xpath={xpath}", attribute) or ""
+    def get_text(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> str:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        return self.page.text_content(resolved) or ""
 
-    def wait_for_element(self, xpath: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
+    def get_attribute(self, selector: str, attribute: str, timeout: int = 10000, selector_type: str = "xpath") -> str:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        return self.page.get_attribute(resolved, attribute) or ""
+
+    def wait_for_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
 
     def wait_for_page_load(self, timeout: int = 60000) -> None:
         self.page.wait_for_load_state("networkidle", timeout=timeout)
 
-    def is_element_visible(self, xpath: str, timeout: int = 5000) -> bool:
+    def is_element_visible(self, selector: str, timeout: int = 5000, selector_type: str = "xpath") -> bool:
         try:
-            self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-            return self.page.is_visible(f"xpath={xpath}")
+            resolved = self._resolve_selector(selector, selector_type)
+            self.page.wait_for_selector(resolved, timeout=timeout)
+            return self.page.is_visible(resolved)
         except PlaywrightTimeoutError:
             return False
 
@@ -87,17 +100,20 @@ class PlaywrightWrapper(BrowserWrapper):
     def wait_for_navigation(self, timeout: int = 30000) -> None:
         self.page.wait_for_load_state("networkidle", timeout=timeout)
 
-    def press_key(self, xpath: str, key: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        self.page.press(f"xpath={xpath}", key)
+    def press_key(self, selector: str, key: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.press(resolved, key)
 
-    def hover_element(self, xpath: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        self.page.hover(f"xpath={xpath}")
+    def hover_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.hover(resolved)
 
-    def scroll_to_element(self, xpath: str, timeout: int = 10000) -> None:
-        self.page.wait_for_selector(f"xpath={xpath}", timeout=timeout)
-        self.page.locator(f"xpath={xpath}").scroll_into_view_if_needed()
+    def scroll_to_element(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
+        self.page.wait_for_selector(resolved, timeout=timeout)
+        self.page.locator(resolved).scroll_into_view_if_needed()
 
     def get_page_title(self) -> str:
         return self.page.title()
@@ -106,7 +122,6 @@ class PlaywrightWrapper(BrowserWrapper):
         self.page.reload()
 
     def refresh(self) -> None:
-        """Refresh the current page - alias for reload_page."""
         self.page.reload()
 
     def go_back(self) -> None:
@@ -117,19 +132,10 @@ class PlaywrightWrapper(BrowserWrapper):
 
     def wait_for_new_tab(self, timeout: int = 10000) -> None:
         raise NotImplementedError
-        # initial_tab_count = len(self.page.context.pages)
-        # print(f"[DETECT] tabulada: {initial_tab_count}")
-        # start_time = time.time()
-        # while len(self.page.context.pages) <= initial_tab_count:
-        #     if time.time() - start_time > timeout / 1000:
-        #         raise TimeoutError(f"No se abrió una nueva pestaña en {timeout}ms")
-        #     time.sleep(0.1)
 
     def switch_to_new_tab(self) -> None:
         pages = self.page.context.pages
-        print("las pages", pages)
         for page in reversed(pages):
-            print("page", page.url, "is_closed", page.is_closed())
             if not page.is_closed():
                 self.page = page
                 self.page.bring_to_front()
@@ -138,10 +144,9 @@ class PlaywrightWrapper(BrowserWrapper):
 
     def close_current_tab(self) -> None:
         self.page.close()
-
         remaining_pages = [p for p in self.page.context.pages if not p.is_closed()]
         if remaining_pages:
-            self.page = remaining_pages[-1]  # o la que necesites
+            self.page = remaining_pages[-1]
             self.page.bring_to_front()
         else:
             raise RuntimeError("Todas las pestañas han sido cerradas.")
@@ -150,7 +155,6 @@ class PlaywrightWrapper(BrowserWrapper):
         pages = self.page.context.pages
         current_index = self.get_current_tab_index()
         previous_index = current_index - 1
-        print("current_index:", current_index, "previous_index:", previous_index, "pages:", len(pages))
         if 0 <= previous_index < len(pages):
             page = pages[previous_index]
             if not page.is_closed():
@@ -169,34 +173,25 @@ class PlaywrightWrapper(BrowserWrapper):
                 return
             else:
                 raise RuntimeError(f"La pestaña en el índice {index} está cerrada.")
-        raise ValueError(f"Índice de pestaña {index} fuera de rango. Hay {len(pages)} pestañas disponibles.")
+        raise ValueError(f"Índice fuera de rango: {index}")
 
     def get_tab_count(self) -> int:
         return len(self.page.context.pages)
 
-    def clear_browser_data(
-        self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True
-    ) -> None:
+    def clear_browser_data(self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True) -> None:
         try:
             context = self.page.context
             if clear_cookies:
                 context.clear_cookies()
             if clear_storage or clear_cache:
-                self.page.evaluate(
-                    """
+                self.page.evaluate("""
                     () => {
-                        if (typeof(Storage) !== "undefined" && localStorage) {
-                            localStorage.clear();
-                        }
-                        if (typeof(Storage) !== "undefined" && sessionStorage) {
-                            sessionStorage.clear();
-                        }
+                        if (localStorage) localStorage.clear();
+                        if (sessionStorage) sessionStorage.clear();
                     }
-                """
-                )
-            print("🧹 Datos del navegador limpiados exitosamente")
+                """)
         except Exception as e:
-            print(f"⚠️ Error al limpiar datos del navegador: {e}")
+            print(f"⚠️ Error al limpiar datos: {e}")
 
     def close_all_tabs_except_main(self) -> None:
         try:
@@ -210,9 +205,6 @@ class PlaywrightWrapper(BrowserWrapper):
             if main_page and not main_page.is_closed():
                 self.page = main_page
                 self.page.bring_to_front()
-                print(f"🗂️ Cerradas {len(pages) - 1} pestañas, regresado a pestaña principal")
-            else:
-                print("⚠️ No se pudo regresar a la pestaña principal")
         except Exception as e:
             print(f"❌ Error al cerrar pestañas: {e}")
 
@@ -227,7 +219,6 @@ class PlaywrightWrapper(BrowserWrapper):
             return -1
 
     def change_button_attribute(self, xpath: str, attribute: str, value: str) -> None:
-        """Cambia cualquier atributo de un botón usando JavaScript."""
         self.page.evaluate(
             f"""
             () => {{
@@ -239,39 +230,34 @@ class PlaywrightWrapper(BrowserWrapper):
                     }}
                 }}
             }}
-        """
+            """
         )
 
-    def expect_download_and_click(self, xpath: str, timeout: int = 30000) -> str | None:
-        """Hace clic en un elemento esperando una descarga y retorna la ruta del archivo descargado."""
+    def expect_download_and_click(self, selector: str, timeout: int = 30000, selector_type: str = "xpath") -> str | None:
+        resolved = self._resolve_selector(selector, selector_type)
         try:
             with self.page.expect_download(timeout=timeout) as download_info:
-                self.page.click(f"xpath={xpath}")
+                self.page.click(resolved)
 
             download = download_info.value
-            # Obtener el path sugerido del archivo
             suggested_filename = download.suggested_filename
-
-            # Guardar el archivo en el directorio de descargas
 
             downloads_dir = os.path.abspath("downloads")
             os.makedirs(downloads_dir, exist_ok=True)
             file_path = os.path.join(downloads_dir, suggested_filename)
 
             download.save_as(file_path)
-            print(f"📥 Archivo descargado: {file_path}")
             return file_path
 
         except Exception as e:
             print(f"❌ Error en descarga: {str(e)}")
             return None
 
-    def click_and_switch_to_new_tab(self, xpath: str, timeout: int = 10000) -> None:
-        """Hace clic en un enlace que abre una nueva pestaña y cambia el foco automáticamente."""
+    def click_and_switch_to_new_tab(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+        resolved = self._resolve_selector(selector, selector_type)
         with self.page.context.expect_page(timeout=timeout) as new_page_info:
-            self.page.click(f"xpath={xpath}")
+            self.page.click(resolved)
 
-        print(self.page.context.pages)
         new_tab = new_page_info.value
         new_tab.bring_to_front()
         self.page = new_tab

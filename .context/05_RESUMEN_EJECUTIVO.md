@@ -1,6 +1,7 @@
 # RESUMEN EJECUTIVO - Expertel Web Scrapers
 
 **Fecha:** 2025-11-28
+**Última Actualización:** 2025-12-01 (Bell Enterprise Centre Implementation)
 **Rama Activa:** `feature/session-manager-and-strategies`
 **Estado:** ✅ Completo y Funcional
 **Documentación:** Completa en `.context/`
@@ -153,7 +154,7 @@ else:
 
 ---
 
-## EJEMPLO REAL - Bell Monthly Reports
+## EJEMPLO REAL - Bell Enterprise Centre Monthly Reports
 
 ### Setup
 ```
@@ -161,37 +162,46 @@ Cliente: ACME Corp
 Cuenta: Bell - 416-555-1234
 Ciclo: Nov 1-30, 2024
 Credencial: user@bell.ca / pwd1234
-Trabajo: Descargar reportes mensuales
+Trabajo: Descargar 4 reportes mensuales desde Enterprise Centre
 ```
 
 ### Ejecución
 ```
-[10:15] ✓ Login a Bell (detecta 2FA SMS)
-        - Solicita código SMS
-        - Webhook recibe: "Your code is 123456"
-        - Polling obtiene código
-        - Submit 2FA
+[10:15] ✓ Login a Bell Enterprise Centre (https://enterprisecentre.bell.ca)
+        - Username: //*[@id='Username']
+        - Password: //*[@id='Password']
+        - Logout: //*[@id='ec-sidebar']/div/div/div[3]/ul[2]/li[4]/a
 
 [10:16] ✓ Navega a sección de reportes
-        - Click menú Reports
-        - Click e-reports
-        - Espera carga
+        - Click "My Reports" → //*[@id='ec-sidebar']/div/div/div[3]/ul[1]/li[3]/button
+        - Click "Service" → //*[@id='sub-nav_menu-item_176459428724020816']/li/a
+        - Click "Enhanced Mobility Reports" → //*[@id='ec-goa-reports-app']/section/main/div/div/div/ul/li[1]/a
+        - Espera 2 minutos
 
-[10:17] ✓ Descarga 3 archivos
-        - Cost Overview PDF
-        - Enhanced Profile CSV
-        - Usage Overview XLSX
+[10:17] ✓ Genera 4 reportes (nuevo flujo)
+        1. Cost Overview Report (myfolder_0)
+        2. Usage Overview Report (myfolder_1)
+        3. Enhanced User Profile Report (myfolder_5)
+        4. Invoice Charge Report (myfolder_2)
 
-[10:18] ✓ Carga a API
+        Por cada reporte:
+        - Click grid
+        - Click workbook button
+        - Espera 2 minutos
+        - Aplica filtros (mes y cuenta - automático)
+        - Exporta a Excel
+
+[10:25] ✓ Carga a API
         - POST /api/v1/accounts/billing-cycles/{id}/files/{f_id}/upload-file/
         - Headers: x-api-key, x-workspace-id, x-client-id
-        - Upload 1/3 ✓
-        - Upload 2/3 ✓
-        - Upload 3/3 ✓
+        - Upload 1/4 ✓ (Cost Overview)
+        - Upload 2/4 ✓ (Usage Overview)
+        - Upload 3/4 ✓ (Enhanced Profile)
+        - Upload 4/4 ✓ (Invoice Charge)
 
-[10:19] ✓ ÉXITO: "3 files downloaded and uploaded"
+[10:26] ✓ ÉXITO: "4 files downloaded and uploaded"
         - Job status: PENDING → SUCCESS
-        - BillingCycleFile status: to_be_fetched → completed
+        - BillingCycleFile status: to_be_fetched → completed (x4)
 ```
 
 ---

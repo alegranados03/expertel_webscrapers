@@ -9,6 +9,84 @@ from web_scrapers.domain.enums import CarrierPortalUrls
 from web_scrapers.infrastructure.playwright.browser_wrapper import BrowserWrapper
 
 
+class BellEnterpriseAuthStrategy(AuthBaseStrategy):
+    """Authentication strategy for Bell Enterprise Centre (https://enterprisecentre.bell.ca) - for monthly reports."""
+
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+        super().__init__(browser_wrapper)
+        self.webhook_url = webhook_url
+
+    def login(self, credentials: Credentials) -> bool:
+        try:
+            # Navigate to the Enterprise Centre login URL
+            self.browser_wrapper.goto(self.get_login_url())
+            self.browser_wrapper.wait_for_page_load(60000)
+            time.sleep(3)  # Wait for page stabilization
+
+            # Fill username field
+            username_xpath = "//*[@id='Username']"
+            self.browser_wrapper.type_text(username_xpath, credentials.username)
+            time.sleep(1)
+
+            # Fill password field
+            password_xpath = "//*[@id='Password']"
+            self.browser_wrapper.type_text(password_xpath, credentials.password)
+            time.sleep(1)
+
+            # Click login button
+            login_button_xpath = "//*[@id='loginBtn']"
+            self.browser_wrapper.click_element(login_button_xpath)
+
+            # Wait for page to load
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(10)  # Wait for page stabilization
+
+            # Verify login was successful
+            return self.is_logged_in()
+
+        except Exception as e:
+            print(f"❌ Error during Enterprise Centre login: {str(e)}")
+            return False
+
+    def logout(self) -> bool:
+        try:
+            # Click on the logout link in the sidebar
+            logout_xpath = "nav:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(2) > li:nth-child(4) > a:nth-child(1) > span:nth-child(1)"
+            self.browser_wrapper.click_element(logout_xpath, selector_type="css")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)
+
+            print("✅ Logout successful in Bell Enterprise Centre")
+            return not self.is_logged_in()
+
+        except Exception as e:
+            print(f"❌ Error during logout: {str(e)}")
+            return False
+
+    def is_logged_in(self) -> bool:
+        try:
+            login_form_xpath = "//*[@id='loginBtn']"
+            # If login button is still visible, we're not logged in
+            return not self.browser_wrapper.is_element_visible(login_form_xpath, timeout=5000)
+        except Exception:
+            return False
+
+    def get_login_url(self) -> str:
+        return "https://enterprisecentre.bell.ca"
+
+    def get_logout_xpath(self) -> str:
+        return "//*[@id='ec-sidebar']/div/div/div[3]/ul[2]/li[4]/a"
+
+    def get_username_xpath(self) -> str:
+        return "//*[@id='Username']"
+
+    def get_password_xpath(self) -> str:
+        return "//*[@id='Password']"
+
+    def get_login_button_xpath(self) -> str:
+        return "//*[@id='loginBtn']"
+
+
 class BellAuthStrategy(AuthBaseStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):

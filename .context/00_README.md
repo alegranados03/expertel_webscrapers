@@ -5,6 +5,7 @@
 Esta carpeta `.context/` contiene documentación completa y actualizada del sistema **Expertel Web Scrapers**.
 
 **Fecha de Auditoría:** 2025-11-28
+**Última Actualización:** 2025-12-01 (Bell Enterprise Centre Implementation)
 **Rama Activa:** `feature/session-manager-and-strategies`
 **Estado:** Completo y funcional
 
@@ -155,6 +156,13 @@ El archivo `CLAUDE.md` en la raíz del proyecto está al día y contiene:
 - ✅ Browser Wrapper: Coincide (30+ métodos)
 - ✅ SMS 2FA: Coincide (endpoints correctos)
 - ✅ 18 estrategias: Correcto (6 carriers × 3 tipos)
+- ✅ Bell Enterprise Centre: Nuevo scraper para 4 reportes mensuales
+
+**CAMBIO IMPORTANTE (2025-12-01):**
+- BellMonthlyReportsScraperStrategy migrado a Enterprise Centre (https://enterprisecentre.bell.ca)
+- BellEnterpriseAuthStrategy para autenticación en nuevo portal
+- Soporte para 4 reportes en lugar de 3 (agregado Invoice Charge Report)
+- Filtrado automático de mes y cuenta por reporte
 
 No se requieren actualizaciones al CLAUDE.md.
 
@@ -316,7 +324,7 @@ python manage.py runserver
 
 3. **SMS 2FA:** Requiere servicio webhook externo ejecutando en puerto 8000
 
-4. **Carrier-Specific:** Bell es el más complejo (835 líneas), Telus también (977 líneas - reportes dinámicos)
+4. **Carrier-Specific:** Bell es el más complejo (1,097 líneas - legacy + Enterprise Centre), Telus también (977 líneas - reportes dinámicos)
 
 5. **Error Handling:** Sistema es resiliente - continúa si un archivo falla en upload
 
@@ -357,6 +365,11 @@ R: Configurados en `logging_config.py` - console y archivo (si está configurado
 
 ---
 
-**Última revisión:** 2025-11-28
+**Última revisión:** 2025-12-01 (Actualización: Bell Enterprise Centre)
 **Status:** ✅ Completo y Actualizado
 **Alcance:** Sistema completo sin carpeta `script_testing`
+
+**Cambios en última revisión:**
+- Agregada documentación para BellMonthlyReportsScraperStrategy (Enterprise Centre)
+- Actualizado flujo de ejemplo para 4 reportes
+- Deprecated BellMonthlyReportsScraperStrategyLegacy (3 reportes antiguos)
