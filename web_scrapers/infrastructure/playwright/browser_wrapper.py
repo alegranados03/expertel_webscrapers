@@ -27,9 +27,9 @@ class PlaywrightWrapper(BrowserWrapper):
     def goto(self, url: str, wait_until: str = "load") -> None:
         self.page.goto(url, wait_until=wait_until)
 
-    def find_element_by_xpath(self, xpath: str, timeout: int = 10000) -> bool:
+    def find_element_by_xpath(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> bool:
         try:
-            resolved = self._resolve_selector(xpath, "xpath")
+            resolved = self._resolve_selector(selector, selector_type)
             self.page.wait_for_selector(resolved, timeout=timeout)
             return True
         except PlaywrightTimeoutError:

@@ -51,7 +51,8 @@ class BellEnterpriseAuthStrategy(AuthBaseStrategy):
     def logout(self) -> bool:
         try:
             # Click on the logout link in the sidebar
-            logout_xpath = "nav:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(2) > li:nth-child(4) > a:nth-child(1) > span:nth-child(1)"
+            #dont delete logout_xpath = "nav:nth-child(4) > div:nth-child(1) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(2) > li:nth-child(4) > a:nth-child(1) > span:nth-child(1)"
+            logout_xpath = "#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(2) > li:nth-child(4) > a"
             self.browser_wrapper.click_element(logout_xpath, selector_type="css")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)

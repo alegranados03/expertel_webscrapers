@@ -387,18 +387,62 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info("Navigating to Bell Enterprise Centre reports...")
 
             # Step 1: Click on "My Reports" list item
-            my_reports_xpath = '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button'
-            self.browser_wrapper.click_element(my_reports_xpath, selector_type="css")
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(2)
-            self.logger.info("My Reports section opened")
+            # Try with li:nth-child(3) first, then fallback to li:nth-child(2) if not found
+            my_reports_selectors = [
+                '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button',
+                '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(2) > button'
+            ]
+
+            my_reports_button_clicked = False
+            for selector in my_reports_selectors:
+                try:
+                    self.logger.debug(f"Trying selector: {selector}")
+                    # Check if element exists
+                    if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
+                        # Validate that the button contains "My Reports" text
+                        button_text = self.browser_wrapper.get_text(selector, selector_type="css")
+                        if "My Reports" in button_text:
+                            self.logger.info(f"Found 'My Reports' button with text: {button_text}")
+                            self.browser_wrapper.click_element(selector, selector_type="css")
+                            self.browser_wrapper.wait_for_page_load()
+                            time.sleep(2)
+                            self.logger.info("My Reports section opened")
+                            my_reports_button_clicked = True
+                            break
+                        else:
+                            self.logger.warning(f"Selector matched but text doesn't contain 'My Reports': {button_text}")
+                except Exception as e:
+                    self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
+                    continue
+
+            if not my_reports_button_clicked:
+                raise Exception("Could not find 'My Reports' button in any of the expected positions")
 
             # Step 2: Click on "Service" sub-menu item
-            service_sub_xpath = "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
-            self.browser_wrapper.click_element(service_sub_xpath, selector_type="css")
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(2)
-            self.logger.info("Service sub-menu accessed")
+            service_sub_selectors = [
+                "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)",
+                "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(2) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
+            ]
+
+            service_sub_clicked = False
+            for selector in service_sub_selectors:
+                try:
+                    self.logger.debug(f"Trying selector: {selector}")
+                    # Check if element exists
+                    if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
+                        self.logger.info(f"Found 'Service' sub-menu with selector")
+                        self.browser_wrapper.click_element(selector, selector_type="css")
+                        self.browser_wrapper.wait_for_page_load()
+                        time.sleep(2)
+                        self.logger.info("Service sub-menu accessed")
+                        service_sub_clicked = True
+                        break
+                except Exception as e:
+                    self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
+                    continue
+
+            if not service_sub_clicked:
+                raise Exception("Could not find 'Service' sub-menu in any of the expected positions")
 
             # Step 3: Click on "Enhanced Mobility Reports" link and switch to new tab
             enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/section/main/div/div/div/ul/li[1]/a"
@@ -452,29 +496,21 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 "name": "cost overview report",
                 "slug": "cost_overview",
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
-                "invoice_month_selector": '/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div',
-                "account_selector": '/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div',
             },
             {
                 "name": "usage overview report",
                 "slug": "usage_overview",
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
-                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
-                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
             },
             {
                 "name": "enhanced user profile report",
                 "slug": "enhanced_user_profile",
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
-                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
-                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
             },
             {
                 "name": "invoice charge report",
                 "slug": "invoice_charge",
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
-                "account_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[1]/section[2]/div[2]/div/div/div/app-filter-multiselect/aff-ui-multiselect/div/div[1]/div",
-                "invoice_month_selector": "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section/div[2]/section/div[2]/div/div/div/app-filter-singleselect/aff-ui-multiselect/div/div[1]/div",
             },
         ]
 
@@ -544,9 +580,10 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         self.logger.info(f"All reports generated. Order: {generated_reports}")
 
-        # Step 8: Download files (similar to legacy implementation)
-        # Placeholder - will be implemented in next iteration
-        self.logger.info("File download logic to be implemented next")
+        # Step 8: Download files from alerts/notifications
+        self.logger.info("Downloading generated reports from alerts...")
+        downloaded_files = self._wait_for_and_download_reports(generated_reports, billing_cycle_file_map)
+        self.logger.info(f"Downloaded {len(downloaded_files)} files from alerts")
 
         # Step 9: Close the new tab and return to the original tab
         try:
@@ -563,45 +600,62 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         return downloaded_files
 
     def _click_report_by_name(self, report_name: str) -> None:
-        """Click on a report by searching for it dynamically in the grid using aria-label.
+        """Click on a report by searching for the description div containing the report name.
 
-        This method is more robust than using grid_id because it searches by the report name
-        instead of relying on positional IDs that can change.
+        Uses a focused search from the main container to find the report cards.
+        Handles case-insensitive matching for report names.
         """
         try:
             self.logger.info(f"Searching for report: '{report_name}'...")
+            self.logger.info("Waiting 15 seconds for reports to fully load...")
+            time.sleep(15)
 
-            # Try multiple XPath strategies to find the report element
-            # Strategy 1: Search by aria-label containing the report name (case-insensitive via translate)
-            report_xpath = f"//div[contains(@class, 'ws-grid__item') and contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{report_name}')]"
+            # Main container XPath that holds all report cards
+            container_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-workspace/app-ana-page/div[2]/div/div/div/div/div/app-ws-view/div/app-ws-icon-view/app-ws-my-folder/div/div/div/div[2]"
 
-            self.logger.debug(f"Attempting XPath (strategy 1): {report_xpath}")
-
-            try:
-                # Esperar a que el elemento sea visible
-                self.browser_wrapper.wait_for_element(report_xpath, timeout=10000)
-                time.sleep(1)
-                self.logger.info(f"Found report using strategy 1")
-
-            except Exception as e:
-                self.logger.warning(f"Strategy 1 failed: {str(e)}, trying strategy 2...")
-
-                # Strategy 2: Try with role='link' attribute as additional filter
-                report_xpath = f"//div[@role='link'][contains(@class, 'ws-grid__item') and contains(@aria-label, '{report_name}')]"
-                self.logger.debug(f"Attempting XPath (strategy 2): {report_xpath}")
-                self.browser_wrapper.wait_for_element(report_xpath, timeout=10000)
-                time.sleep(1)
-                self.logger.info(f"Found report using strategy 2")
-
-            # Hacer click en el elemento
-            self.browser_wrapper.click_element(report_xpath)
+            # Wait for container to be visible
+            self.logger.debug(f"Waiting for report container to be visible...")
+            self.browser_wrapper.wait_for_element(container_xpath, timeout=10000)
             time.sleep(1)
+            self.logger.debug("Report container found")
+
+            # Search for the description div within the container using case-insensitive matching
+            # The text in HTML has proper case, so we need to match case-insensitively
+            report_xpath = f"{container_xpath}//div[@class='ws-grid__item__description ng-star-inserted' and contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), translate('{report_name.lower()}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))]"
+            self.logger.debug(f"Searching for report within container (case-insensitive): {report_name}")
+
+            # Wait for the specific report to appear
+            self.browser_wrapper.wait_for_element(report_xpath, timeout=10000)
+            time.sleep(1)
+
+            self.logger.info(f"Report '{report_name}' found, clicking it...")
+            self.browser_wrapper.click_element(report_xpath)
+            time.sleep(2)
 
             self.logger.info(f"Report '{report_name}' found and clicked successfully")
 
         except Exception as e:
             self.logger.error(f"Error clicking report '{report_name}': {str(e)}")
-            raise e
+            # Try alternative approach: search for the parent ws-grid__item div by aria-label
+            try:
+                self.logger.info(f"Trying alternative search for report '{report_name}'...")
+
+                container_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-workspace/app-ana-page/div[2]/div/div/div/div/div/app-ws-view/div/app-ws-icon-view/app-ws-my-folder/div/div/div/div[2]"
+
+                # Search for the parent item div by aria-label (case-insensitive)
+                alt_report_xpath = f"{container_xpath}//div[@class and contains(@class, 'ws-grid__item') and contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), translate('{report_name.lower()}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))]"
+                self.logger.debug(f"Alternative XPath: searching for parent container with aria-label (case-insensitive)")
+
+                self.browser_wrapper.wait_for_element(alt_report_xpath, timeout=10000)
+                time.sleep(1)
+                self.browser_wrapper.click_element(alt_report_xpath)
+                time.sleep(2)
+
+                self.logger.info(f"Report '{report_name}' found via alternative method and clicked successfully")
+
+            except Exception as e2:
+                self.logger.error(f"Alternative search also failed: {str(e2)}")
+                raise e
 
     def _calculate_invoice_month(self, billing_cycle: BillingCycle) -> str:
         """Calculate the invoice month string from billing cycle end date.
@@ -621,29 +675,20 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _apply_report_filters(self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict) -> None:
         """Apply account and invoice month filters to the current report.
 
+        Uses dynamic XPath selectors to handle DOM repositioning.
         Raises exception if filter application fails - caller should abort report processing.
         """
         try:
-            # Get selectors from report_config if provided, otherwise use defaults
-            invoice_month_xpath = report_config.get("invoice_month_selector")
-            account_xpath = report_config.get("account_selector")
-
             # Step 1: Select invoice month (single select)
-            self.logger.info(f"Opening invoice month dropdown for {report_slug}...")
-            self.browser_wrapper.click_element(invoice_month_xpath)
-            time.sleep(2)
-
-            # Find and click the invoice month in the dropdown
-            self._select_month_from_dropdown(invoice_month)
+            self.logger.info(f"Selecting invoice month '{invoice_month}' for {report_slug}...")
+            self._select_invoice_month_dynamic(invoice_month)
+            time.sleep(1)
 
             # Step 2: Select account (multi-select)
             if account_number:
-                self.logger.info(f"Opening account dropdown for {report_slug}...")
-                self.browser_wrapper.click_element(account_xpath)
-                time.sleep(2)
-
-                # Find and click the account in the dropdown
-                self._select_account_from_dropdown(account_number)
+                self.logger.info(f"Selecting account '{account_number}' for {report_slug}...")
+                self._select_account_dynamic(account_number)
+                time.sleep(1)
 
             # Step 3: Click Apply Filters button
             apply_filters_xpath = "//*[@id='filter_apply_btn']"
@@ -656,6 +701,16 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         except Exception as e:
             self.logger.error(f"Error applying filters for {report_slug}: {str(e)}")
+            # Try to return to reports list on error
+            try:
+                self.logger.warning("Attempting to navigate back to reports list after filter error...")
+                breadcrumb_xpath = "//*[@id='breadcrumb_item_1']"
+                self.browser_wrapper.click_element(breadcrumb_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info("Successfully navigated back to reports list")
+            except Exception as e2:
+                self.logger.warning(f"Could not navigate back to reports list: {str(e2)}")
             raise e
 
     def _select_month_from_dropdown(self, month_text: str) -> None:
@@ -724,6 +779,149 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"Error selecting account from dropdown: {str(e)}")
             raise e
 
+    def _select_invoice_month_dynamic(self, month_text: str) -> None:
+        """Dynamically select invoice month from dropdown within the filter container.
+
+        Searches within the filter section regardless of filter order, then selects the month.
+        """
+        try:
+            self.logger.info(f"Dynamically selecting invoice month: '{month_text}'...")
+
+            # Step 1: Find the main filter container
+            filter_container_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section"
+            self.browser_wrapper.wait_for_element(filter_container_xpath, timeout=10000)
+            self.logger.debug("Filter container found")
+
+            # Step 2: Find the invoice month filter section within the container
+            # Search for the section that contains "Invoice month" in its header
+            invoice_month_section_xpath = f"{filter_container_xpath}//section[.//span[@class='filter-title-ellipsis' and contains(., 'Invoice month')]]"
+            self.browser_wrapper.wait_for_element(invoice_month_section_xpath, timeout=10000)
+            self.logger.debug("Invoice month filter section found within container")
+
+            # Step 3: Find and click the dropdown button within this section
+            invoice_month_dropdown_xpath = f"{invoice_month_section_xpath}//div[@class='c-btn'][contains(@aria-expanded, 'false') or contains(@aria-expanded, 'true')]"
+            self.browser_wrapper.wait_for_element(invoice_month_dropdown_xpath, timeout=10000)
+            time.sleep(1)
+
+            # Click to open the dropdown
+            self.logger.info("Clicking invoice month dropdown button...")
+            self.browser_wrapper.click_element(invoice_month_dropdown_xpath)
+            time.sleep(2)  # Wait for dropdown animation
+            self.logger.info("Invoice month dropdown opened")
+
+            # Step 4: Find and click the specific month option
+            # The month options are within the dropdown's list area
+            month_option_xpath = f"{invoice_month_section_xpath}//li[contains(@class, 'list-item')][.//span[contains(@class, 'singleselect-dropdown-item') and contains(., '{month_text}')]]"
+            self.browser_wrapper.wait_for_element(month_option_xpath, timeout=10000)
+            time.sleep(1)
+
+            self.logger.info(f"Clicking invoice month option: '{month_text}'...")
+            self.browser_wrapper.click_element(month_option_xpath)
+            time.sleep(1)
+
+            self.logger.info(f"Invoice month '{month_text}' selected successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error dynamically selecting invoice month '{month_text}': {str(e)}")
+            raise e
+
+    def _select_account_dynamic(self, account_number: str) -> None:
+        """Dynamically select account from dropdown within the filter container.
+
+        Searches within the filter section regardless of filter order, then selects the account.
+        Handles two scenarios:
+        1. Single account: Already selected automatically, no action needed
+        2. Multiple accounts: Uncheck "Select all" and select only the specified account
+        """
+        try:
+            self.logger.info(f"Dynamically selecting account: '{account_number}'...")
+
+            # Step 1: Find the main filter container
+            filter_container_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/div/app-abi/app-ana-page/div[2]/div/div/app-workbook/div/app-wb-sheet/div/div/div/div[1]/div[2]/ngb-tabset/div/div/div/app-wb-sheet-filter/section/app-json-panel[1]/section/div/div[2]/div/div/div/div/section/section"
+            self.browser_wrapper.wait_for_element(filter_container_xpath, timeout=10000)
+            self.logger.debug("Filter container found")
+
+            # Step 2: Find the account filter section within the container
+            account_section_xpath = f"{filter_container_xpath}//section[.//span[@class='filter-title-ellipsis' and contains(., 'Account number')]]"
+            self.browser_wrapper.wait_for_element(account_section_xpath, timeout=10000)
+            self.logger.debug("Account number filter section found within container")
+
+            # Step 3: Find the dropdown button and get current state from the display text
+            account_dropdown_xpath = f"{account_section_xpath}//div[@class='c-btn'][contains(@aria-expanded, 'false') or contains(@aria-expanded, 'true')]"
+            self.browser_wrapper.wait_for_element(account_dropdown_xpath, timeout=10000)
+            time.sleep(1)
+
+            # Get the current selected state from the display text
+            # This tells us if there are multiple accounts or just one
+            display_text_xpath = f"{account_dropdown_xpath}//div[@class='c-list ng-star-inserted']//span"
+            try:
+                display_text = self.browser_wrapper.get_text(display_text_xpath)
+                self.logger.info(f"Current dropdown display state: '{display_text}'")
+
+                # If it shows a single account number, it means there's only one account
+                # In that case, it's already selected and we don't need to do anything
+                if display_text == account_number:
+                    self.logger.info(f"Account '{account_number}' is already the only account selected. No action needed.")
+                    return
+            except Exception as e:
+                self.logger.debug(f"Could not read display text: {str(e)}, continuing with selection...")
+
+            # Step 4: Open the dropdown if it's not already open
+            # Check aria-expanded attribute to see if dropdown is open
+            try:
+                # Use xpath locator with proper syntax
+                aria_expanded = self.browser_wrapper.page.locator(f"xpath={account_dropdown_xpath}").get_attribute("aria-expanded")
+                if aria_expanded == "false":
+                    self.logger.info("Opening dropdown...")
+                    self.browser_wrapper.click_element(account_dropdown_xpath)
+                    time.sleep(3)
+                    self.logger.info("Dropdown opened")
+                else:
+                    self.logger.info("Dropdown already open")
+            except Exception as e:
+                self.logger.debug(f"Could not check aria-expanded, assuming dropdown is closed: {str(e)}")
+                self.browser_wrapper.click_element(account_dropdown_xpath)
+                time.sleep(3)
+                self.logger.info("Dropdown opened (fallback)")
+
+            # Step 5: Check if "Select all" is checked and uncheck it if needed
+            # Only needed if we have multiple accounts
+            select_all_label_xpath = f"{account_section_xpath}//label[@class='kt-checkbox multiselect-dropdown-item checkbox-active ng-star-inserted']"
+            try:
+                # If the label has checkbox-active class, it means it's checked
+                self.logger.info("Unchecking 'Select all'...")
+                self.browser_wrapper.click_element(select_all_label_xpath)
+                time.sleep(3)  # Wait for the list to update
+                self.logger.info("'Select all' unchecked")
+            except Exception as e:
+                self.logger.debug(f"'Select all' checkbox not found or not checked: {str(e)}")
+
+            # Step 5b: The dropdown closes after unchecking, so we MUST reopen it
+            # This is a known behavior - the dropdown closes after state changes
+            self.logger.info("Reopening dropdown after unchecking 'Select all'...")
+            self.browser_wrapper.click_element(account_dropdown_xpath)
+            time.sleep(3)  # Wait for dropdown to reopen and list to render
+            self.logger.info("Dropdown reopened with updated list")
+
+            # Step 6: Find and select ONLY the specific account
+            # The structure is: li > span > input + label
+            # Find the label with the account number, then click its preceding input
+            account_label_xpath = f"{account_section_xpath}//div[@class='dropdown_items']//li[contains(@class, 'multiselect-setting')]//label[contains(., '{account_number}')]"
+            self.browser_wrapper.wait_for_element(account_label_xpath, timeout=10000)
+            time.sleep(1)
+
+            # Find the checkbox (input) that precedes this label (they're siblings within the span)
+            account_checkbox_xpath = f"{account_section_xpath}//div[@class='dropdown_items']//li[contains(@class, 'multiselect-setting')]//span[.//label[contains(., '{account_number}')]]//input[@type='checkbox']"
+            self.logger.info(f"Selecting account '{account_number}'...")
+            self.browser_wrapper.click_element(account_checkbox_xpath)
+            time.sleep(1)
+
+            self.logger.info(f"Account '{account_number}' selected successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error dynamically selecting account '{account_number}': {str(e)}")
+            raise e
+
     def _export_report_to_excel(self, report_slug: str) -> None:
         """Export the current report to Excel."""
         try:
@@ -746,6 +944,144 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         except Exception as e:
             self.logger.error(f"Error exporting report: {str(e)}")
+
+    def _wait_for_and_download_reports(self, generated_reports: List[str], billing_cycle_file_map: dict) -> List[FileDownloadInfo]:
+        """Wait for reports to appear in alerts/notifications and download them.
+
+        Reports are submitted for generation and appear in the Alerts dropdown as they become available.
+        This method monitors the alerts and downloads files as they appear (in reverse order - newest first).
+
+        Args:
+            generated_reports: List of report slugs in generation order
+            billing_cycle_file_map: Mapping of report slug to BillingCycleFile object
+
+        Returns:
+            List of FileDownloadInfo objects for downloaded files
+        """
+        downloaded_files = []
+
+        try:
+            # Step 1: Click on the alerts icon
+            alerts_icon_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[6]"
+            self.logger.info("Clicking alerts/notifications icon...")
+            self.browser_wrapper.click_element(alerts_icon_xpath)
+            time.sleep(3)
+            self.logger.info("Alerts panel opened")
+
+            # Step 2: Wait for notifications list to appear
+            notifications_list_xpath = "//*[@id='m_quick_sidebar_notification-wrap']/div/div/ul"
+            self.logger.info("Waiting for notifications list to appear...")
+            self.browser_wrapper.wait_for_element(notifications_list_xpath, timeout=10000)
+            time.sleep(2)
+            self.logger.debug("Notifications list found")
+
+            # Step 3: Download reports (in reverse order - newest first)
+            # Reports are listed with the newest at the top
+            for i, report_slug in enumerate(reversed(generated_reports)):
+                try:
+                    self.logger.info(f"Downloading report #{i+1}: '{report_slug}'...")
+
+                    # Find the notification item that contains this report
+                    # Each notification is an <li> with class "kt-notifi-li"
+                    # We search for it by the report slug or name in the notification content
+                    notification_item_xpath = f"//li[contains(@class, 'kt-notifi-li')][position()={i+1}]"
+
+                    # Wait for this notification item to be visible
+                    self.browser_wrapper.wait_for_element(notification_item_xpath, timeout=10000)
+                    time.sleep(1)
+                    self.logger.debug(f"Notification item found for report #{i+1}")
+
+                    # Find the download icon within this notification
+                    # Download icon is an <em> with class containing "line-download"
+                    download_icon_xpath = f"{notification_item_xpath}//em[contains(@class, 'line-download')]"
+
+                    # Wait for the download icon to be visible
+                    self.browser_wrapper.wait_for_element(download_icon_xpath, timeout=10000)
+                    time.sleep(1)
+
+                    self.logger.info(f"Download icon found for report '{report_slug}', clicking it...")
+
+                    # Click the download icon to trigger the file download
+                    downloaded_file_path = self.browser_wrapper.expect_download_and_click(
+                        download_icon_xpath, timeout=30000
+                    )
+
+                    if downloaded_file_path:
+                        actual_file_name = os.path.basename(downloaded_file_path)
+                        self.logger.info(f"File downloaded successfully: {actual_file_name}")
+
+                        # Get the corresponding BillingCycleFile from the map
+                        corresponding_bcf = billing_cycle_file_map.get(report_slug)
+
+                        # Create FileDownloadInfo with mapping
+                        file_download_info = FileDownloadInfo(
+                            file_id=corresponding_bcf.id if corresponding_bcf else i,
+                            file_name=actual_file_name,
+                            download_url="N/A",
+                            file_path=downloaded_file_path,
+                            billing_cycle_file=corresponding_bcf,
+                        )
+                        downloaded_files.append(file_download_info)
+
+                        # Log mapping confirmation
+                        if corresponding_bcf:
+                            self.logger.info(
+                                f"MAPPING CONFIRMED: {actual_file_name} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{report_slug}')"
+                            )
+                        else:
+                            self.logger.warning(f"File downloaded without specific BillingCycleFile mapping")
+
+                    else:
+                        self.logger.warning(
+                            f"expect_download_and_click failed for report '{report_slug}', trying traditional method..."
+                        )
+                        # Fallback: Try traditional click
+                        self.browser_wrapper.click_element(download_icon_xpath)
+                        time.sleep(5)
+
+                        estimated_filename = f"bell_report_{report_slug}_{datetime.now().timestamp()}.xlsx"
+                        corresponding_bcf = billing_cycle_file_map.get(report_slug)
+
+                        file_download_info = FileDownloadInfo(
+                            file_id=corresponding_bcf.id if corresponding_bcf else i,
+                            file_name=estimated_filename,
+                            download_url="N/A",
+                            file_path=f"{DOWNLOADS_DIR}/{estimated_filename}",
+                            billing_cycle_file=corresponding_bcf,
+                        )
+                        downloaded_files.append(file_download_info)
+
+                        self.logger.info(f"Download started (traditional method): {estimated_filename}")
+                        if corresponding_bcf:
+                            self.logger.info(
+                                f"MAPPING CONFIRMED: {estimated_filename} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{report_slug}')"
+                            )
+
+                    # Small pause between downloads
+                    time.sleep(3)
+
+                except Exception as e:
+                    self.logger.error(f"Error downloading report '{report_slug}': {str(e)}")
+                    continue
+
+            # Log final summary
+            self.logger.info(f"\nFINAL FILE DOWNLOAD SUMMARY:")
+            self.logger.info(f"   Total files downloaded: {len(downloaded_files)}")
+            for idx, file_info in enumerate(downloaded_files, 1):
+                if file_info.billing_cycle_file:
+                    bcf = file_info.billing_cycle_file
+                    slug = bcf.carrier_report.slug if hasattr(bcf, "carrier_report") and bcf.carrier_report else "N/A"
+                    self.logger.info(
+                        f"   [{idx}] {file_info.file_name} -> BillingCycleFile ID {bcf.id} (Slug: '{slug}')"
+                    )
+                else:
+                    self.logger.info(f"   [{idx}] {file_info.file_name} -> NO MAPPING")
+            self.logger.info(f"=====================================")
+
+        except Exception as e:
+            self.logger.error(f"Error in _wait_for_and_download_reports: {str(e)}")
+
+        return downloaded_files
 
 
 class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):

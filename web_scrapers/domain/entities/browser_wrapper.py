@@ -11,8 +11,8 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def find_element_by_xpath(self, xpath: str, timeout: int = 10000) -> bool:
-        """Encuentra un elemento por XPath."""
+    def find_element_by_xpath(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> bool:
+        """Encuentra un elemento por XPath, CSS o pierce según selector_type."""
         raise NotImplementedError()
 
     @abstractmethod
