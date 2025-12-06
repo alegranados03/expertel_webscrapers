@@ -839,13 +839,31 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self._select_account_dynamic(account_number)
                 time.sleep(1)
 
-            # Step 3: Click Apply Filters button
-            apply_filters_xpath = "//*[@id='filter_apply_btn']"
-            self.logger.info(f"Clicking Apply Filters for {report_slug}...")
-            self.browser_wrapper.click_element(apply_filters_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(60)  # Wait 1 minute for filters to apply
+            # Step 3: Check if "Auto apply" is enabled before clicking Apply Filters
+            auto_apply_checkbox_xpath = "//*[@id='wb-sheet-btn-apply']/div[2]/div//input[@id='autoApplyButton']"
+            auto_apply_enabled = False
 
+            try:
+                # Check if auto apply checkbox exists and is checked
+                if self.browser_wrapper.find_element_by_xpath(auto_apply_checkbox_xpath, timeout=3000):
+                    auto_apply_enabled = self.browser_wrapper.page.is_checked(f"xpath={auto_apply_checkbox_xpath}")
+                    if auto_apply_enabled:
+                        self.logger.info(f"'Auto apply' is enabled - filters will be applied automatically, skipping Apply button")
+                    else:
+                        self.logger.info(f"'Auto apply' is disabled - will click Apply Filters button")
+            except Exception as e:
+                self.logger.debug(f"Could not verify 'Auto apply' status: {str(e)}, assuming manual apply is needed")
+
+            # Only click Apply Filters if auto apply is not enabled
+            if not auto_apply_enabled:
+                apply_filters_xpath = "//*[@id='filter_apply_btn']"
+                self.logger.info(f"Clicking Apply Filters for {report_slug}...")
+                self.browser_wrapper.click_element(apply_filters_xpath)
+                self.browser_wrapper.wait_for_page_load()
+            else:
+                self.logger.info(f"Auto apply active - waiting for automatic filter application...")
+
+            time.sleep(30) # Wait 1 minute for filters to apply (either manually or automatically)
             self.logger.info(f"Filters applied successfully for {report_slug}")
 
         except Exception as e:
@@ -981,6 +999,8 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         Handles two scenarios:
         1. Single account: Already selected automatically, no action needed
         2. Multiple accounts: Uncheck "Select all" and select only the specified account
+
+        If the primary method fails, uses an alternative table-based filter approach.
         """
         try:
             self.logger.info(f"Dynamically selecting account: '{account_number}'...")
@@ -1068,8 +1088,99 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info(f"Account '{account_number}' selected successfully")
 
         except Exception as e:
-            self.logger.error(f"Error dynamically selecting account '{account_number}': {str(e)}")
-            raise e
+            self.logger.error(f"Primary account selection method failed: {str(e)}")
+            self.logger.info("Attempting alternative table-based filter method...")
+
+            # Try alternative method using table header filter
+            try:
+                self._select_account_via_table_filter(account_number)
+                self.logger.info(f"Account '{account_number}' selected successfully using alternative method")
+            except Exception as e2:
+                self.logger.error(f"Alternative account selection method also failed: {str(e2)}")
+                raise Exception(f"Both account selection methods failed. Primary error: {str(e)}, Alternative error: {str(e2)}")
+
+    def _select_account_via_table_filter(self, account_number: str) -> None:
+        """Alternative method: Select account using the table header filter menu.
+
+        This method is used as a fallback when the primary dropdown selection fails.
+        It uses the datatable header's filter menu to search and select the account.
+
+        Args:
+            account_number: The account number to filter by
+        """
+        self.logger.info(f"Using table-based filter for account: '{account_number}'")
+
+        # Step 1: Find the table header container
+        # Using a more flexible selector that can match dynamic IDs
+        table_header_xpath = "//datatable-header[@class='datatable-header ng-star-inserted']"
+        self.browser_wrapper.wait_for_element(table_header_xpath, timeout=10000)
+        self.logger.debug("Table header found")
+
+        # Step 2: Find the Account number header cell
+        account_header_xpath = f"{table_header_xpath}//datatable-header-cell[contains(@class, 'Accountnumber')]"
+        self.browser_wrapper.wait_for_element(account_header_xpath, timeout=10000)
+        self.logger.debug("Account number header cell found")
+
+        # Step 3: Click the menu toggle button to open the filter menu
+        menu_toggle_xpath = f"{account_header_xpath}//span[@role='button'][contains(@class, 'menu-toggle-btn')]"
+        self.browser_wrapper.wait_for_element(menu_toggle_xpath, timeout=10000)
+        self.logger.info("Clicking Account number filter menu button...")
+        self.browser_wrapper.click_element(menu_toggle_xpath)
+        time.sleep(3)  # Wait for menu to appear
+        self.logger.info("Filter menu opened")
+
+        # Step 4: Locate the filter menu popup (usually appears as body > div with high z-index)
+        filter_menu_xpath = "//div[contains(@class, 'table-column-menu') and contains(@class, 'ui-tieredmenu')]"
+        self.browser_wrapper.wait_for_element(filter_menu_xpath, timeout=10000)
+        self.logger.debug("Filter menu popup found")
+
+        # Step 5: Uncheck "Select all" if it's checked
+        select_all_checkbox_xpath = f"{filter_menu_xpath}//label[contains(., 'Select all')]//input[@type='checkbox']"
+        try:
+            # Check if checkbox is checked
+            is_checked = self.browser_wrapper.page.is_checked(f"xpath={select_all_checkbox_xpath}")
+            if is_checked:
+                self.logger.info("'Select all' is checked, unchecking it...")
+                self.browser_wrapper.click_element(select_all_checkbox_xpath)
+                time.sleep(2)
+                self.logger.info("'Select all' unchecked")
+            else:
+                self.logger.info("'Select all' is already unchecked")
+        except Exception as e:
+            self.logger.warning(f"Could not verify/uncheck 'Select all': {str(e)}")
+
+        # Step 6: Type the account number in the search input
+        search_input_xpath = f"{filter_menu_xpath}//input[@type='text'][@placeholder='Search...']"
+        self.browser_wrapper.wait_for_element(search_input_xpath, timeout=10000)
+        self.logger.info(f"Typing account number '{account_number}' in search box...")
+        self.browser_wrapper.type_text(search_input_xpath, account_number)
+
+        # Step 7: Wait 8 seconds for results to load
+        self.logger.info("Waiting 8 seconds for search results to load...")
+        time.sleep(8)
+
+        # Step 8: Select the checkbox for the filtered account
+        # The account number appears in a filter-item div with a label
+        account_filter_item_xpath = f"{filter_menu_xpath}//div[@class='filter-item ng-star-inserted']//label[contains(@for, '{account_number}')]//input[@type='checkbox']"
+
+        # Alternative: search by the label text instead of the 'for' attribute
+        if not self.browser_wrapper.find_element_by_xpath(account_filter_item_xpath, timeout=3000):
+            self.logger.debug("Trying alternative checkbox selector...")
+            account_filter_item_xpath = f"{filter_menu_xpath}//div[@class='filter-item ng-star-inserted']//span[@class='filter-item-label' and contains(., '{account_number}')]/preceding-sibling::input[@type='checkbox']"
+
+        self.browser_wrapper.wait_for_element(account_filter_item_xpath, timeout=10000)
+        self.logger.info(f"Selecting checkbox for account '{account_number}'...")
+        self.browser_wrapper.click_element(account_filter_item_xpath)
+        time.sleep(1)
+        self.logger.info(f"Account '{account_number}' checkbox selected")
+
+        # Step 9: Click the "Ok" button to apply the filter
+        ok_button_xpath = f"{filter_menu_xpath}//button[@class='btn btn-primary' and text()='Ok']"
+        self.browser_wrapper.wait_for_element(ok_button_xpath, timeout=10000)
+        self.logger.info("Clicking 'Ok' button to apply filter...")
+        self.browser_wrapper.click_element(ok_button_xpath)
+        time.sleep(3)  # Wait for filter to apply
+        self.logger.info("Filter applied successfully")
 
     def _export_report_to_excel(self, report_slug: str) -> None:
         """Export the current report to Excel."""
