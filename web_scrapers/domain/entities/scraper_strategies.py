@@ -177,6 +177,85 @@ class ScraperBaseStrategy(ABC):
             self.logger.error(f"Error uploading files: {str(e)}")
             return False
 
+    def _upload_files_with_individual_tracking(
+        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
+    ) -> Dict[str, Any]:
+        """
+        Upload files with individual tracking for each file.
+
+        Returns a dictionary with detailed results:
+        {
+            'total_files': int,
+            'successful_uploads': int,
+            'failed_uploads': int,
+            'success': bool,
+            'uploaded_files': List[FileDownloadInfo],
+            'failed_files': List[Dict[str, Any]]
+        }
+        """
+        upload_service = FileUploadService()
+        upload_type = self._get_upload_type()
+
+        uploaded_files = []
+        failed_files = []
+
+        self.logger.info(f"Starting individual upload tracking for {len(files)} files...")
+
+        for file_info in files:
+            try:
+                # Verify file exists and has a physical path
+                if not file_info.file_path or not os.path.exists(file_info.file_path):
+                    self.logger.warning(f"File not found on disk: {file_info.file_name}")
+                    failed_files.append({
+                        'file': file_info,
+                        'reason': 'File not found on disk',
+                        'file_path': file_info.file_path
+                    })
+                    continue
+
+                # Attempt to upload this single file
+                self.logger.info(f"Uploading: {file_info.file_name}")
+                success = upload_service.upload_files_batch(
+                    files=[file_info],
+                    billing_cycle=billing_cycle,
+                    upload_type=upload_type,
+                    additional_data=None
+                )
+
+                if success:
+                    self.logger.info(f"Upload successful: {file_info.file_name}")
+                    uploaded_files.append(file_info)
+                else:
+                    self.logger.error(f"Upload failed: {file_info.file_name}")
+                    failed_files.append({
+                        'file': file_info,
+                        'reason': 'Upload service returned failure',
+                        'file_path': file_info.file_path
+                    })
+
+            except Exception as e:
+                self.logger.error(f"Exception uploading {file_info.file_name}: {str(e)}")
+                failed_files.append({
+                    'file': file_info,
+                    'reason': f'Exception: {str(e)}',
+                    'file_path': file_info.file_path
+                })
+
+        # Build result summary
+        result = {
+            'total_files': len(files),
+            'successful_uploads': len(uploaded_files),
+            'failed_uploads': len(failed_files),
+            'success': len(failed_files) == 0,  # Only success if ALL uploaded
+            'uploaded_files': uploaded_files,
+            'failed_files': failed_files
+        }
+
+        # Log summary
+        self.logger.info(f"Upload tracking complete: {result['successful_uploads']}/{result['total_files']} successful")
+
+        return result
+
     def _get_upload_type(self) -> str:
         """Determine upload type based on strategy class."""
         class_name = self.__class__.__name__.lower()
@@ -194,23 +273,70 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
+            # Step 1: Find files section
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
                 return ScraperResult(False, error="Could not find files section")
 
+            # Step 2: Download files
             downloaded_files = self._download_files(files_section, config, billing_cycle)
-            if not downloaded_files:
-                return ScraperResult(False, error="Could not download files")
 
-            upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
-            if not upload_result:
-                return ScraperResult(False, error="Error sending files to external endpoint")
+            # Calculate expected files from billing_cycle
+            expected_files_count = len(billing_cycle.billing_cycle_files) if billing_cycle.billing_cycle_files else 0
+            downloaded_count = len(downloaded_files)
 
-            return ScraperResult(
-                True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
-            )
+            self.logger.info(f"Download phase complete: {downloaded_count}/{expected_files_count} files downloaded")
+
+            # Step 3: Upload files with individual tracking
+            upload_tracking = self._upload_files_with_individual_tracking(downloaded_files, config, billing_cycle)
+
+            # Step 4: Determine final success based on download and upload results
+            download_failures = expected_files_count - downloaded_count
+            upload_failures = upload_tracking['failed_uploads']
+            total_failures = download_failures + upload_failures
+
+            # Build detailed result message
+            if total_failures == 0:
+                # Perfect success: all files downloaded and uploaded
+                message = f"SUCCESS: All {expected_files_count} files downloaded and uploaded"
+                self.logger.info(message)
+                return ScraperResult(
+                    True,
+                    message,
+                    self._create_file_mapping(upload_tracking['uploaded_files'])
+                )
+            else:
+                # Partial or complete failure
+                error_parts = []
+
+                if download_failures > 0:
+                    error_parts.append(f"{download_failures} file(s) failed to download")
+
+                if upload_failures > 0:
+                    error_parts.append(f"{upload_failures} file(s) failed to upload")
+                    # Log details of failed uploads
+                    for failed in upload_tracking['failed_files']:
+                        self.logger.error(
+                            f"Upload failure: {failed['file'].file_name} - {failed['reason']}"
+                        )
+
+                error_message = f"ERROR: {', '.join(error_parts)}. "
+                error_message += f"Expected: {expected_files_count}, "
+                error_message += f"Downloaded: {downloaded_count}, "
+                error_message += f"Uploaded: {upload_tracking['successful_uploads']}"
+
+                self.logger.error(error_message)
+
+                # Return failure with partial results
+                return ScraperResult(
+                    False,
+                    error_message,
+                    self._create_file_mapping(upload_tracking['uploaded_files']),
+                    error=error_message
+                )
 
         except Exception as e:
+            self.logger.error(f"Exception in execute(): {str(e)}")
             return ScraperResult(False, error=str(e))
 
     @abstractmethod

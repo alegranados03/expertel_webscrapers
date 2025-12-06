@@ -1,9 +1,10 @@
 import calendar
 import logging
 import os
+import re
 import time
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
 from web_scrapers.domain.entities.models import BillingCycle, ScraperConfig
@@ -672,6 +673,154 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"Error calculating invoice month: {str(e)}")
             return ""
 
+    def _parse_notification_time(self, time_text: str) -> Optional[int]:
+        """
+        Parse notification time text and return minutes ago.
+        Returns None if parsing fails or time is invalid.
+
+        Examples:
+            "a few seconds ago" → 0 minutes
+            "a minute ago" → 1 minute
+            "3 minutes ago" → 3 minutes
+            "16 hours ago" → 960 minutes (invalid, too old)
+            "2 days ago" → None (invalid)
+        """
+        time_text = time_text.strip().lower()
+
+        # Pattern: "a few seconds ago" or "just now"
+        if "second" in time_text or "just now" in time_text or "few seconds" in time_text:
+            return 0
+
+        # Pattern: "a minute ago"
+        if time_text == "a minute ago":
+            return 1
+
+        # Pattern: "X minutes ago"
+        minutes_match = re.search(r'(\d+)\s*minute', time_text)
+        if minutes_match:
+            return int(minutes_match.group(1))
+
+        # Pattern: "X hours ago" or "an hour ago"
+        hours_match = re.search(r'(\d+)\s*hour', time_text)
+        if hours_match:
+            return int(hours_match.group(1)) * 60
+
+        if "an hour ago" in time_text or "1 hour ago" in time_text:
+            return 60
+
+        # Pattern: "X days ago" - too old, return invalid
+        if "day" in time_text or "week" in time_text or "month" in time_text:
+            return None
+
+        # Couldn't parse
+        self.logger.warning(f"Could not parse time text: '{time_text}'")
+        return None
+
+    def _is_notification_recent(self, notification_xpath: str, max_minutes: int = 60) -> bool:
+        """
+        Check if notification was generated within the last N minutes.
+
+        Args:
+            notification_xpath: XPath of the notification <li>
+            max_minutes: Maximum age in minutes (default: 60)
+
+        Returns:
+            True if notification is recent enough, False otherwise
+        """
+        try:
+            # Find the time element within this notification
+            time_xpath = f"{notification_xpath}//div[contains(@class, 'kt-notifi-time')]"
+
+            time_element = self.browser_wrapper.find_element_by_xpath(time_xpath, timeout=3000)
+            if not time_element:
+                self.logger.warning("Time element not found in notification")
+                return False
+
+            time_text = self.browser_wrapper.get_text(time_xpath)
+            self.logger.debug(f"Notification time text: '{time_text}'")
+
+            minutes_ago = self._parse_notification_time(time_text)
+
+            if minutes_ago is None:
+                self.logger.warning(f"Could not parse time, rejecting notification: '{time_text}'")
+                return False
+
+            is_recent = minutes_ago <= max_minutes
+
+            if is_recent:
+                self.logger.info(f"Notification is recent: {minutes_ago} minutes ago (max: {max_minutes})")
+            else:
+                self.logger.warning(f"Notification is too old: {minutes_ago} minutes ago (max: {max_minutes})")
+
+            return is_recent
+
+        except Exception as e:
+            self.logger.error(f"Error checking notification time: {e}")
+            return False
+
+    def _create_report_name_mappings(self) -> Dict[str, List[str]]:
+        """Map slugs to expected notification text (from second <b> tag)."""
+        return {
+            "cost_overview": ["cost overview report"],
+            "usage_overview": ["usage overview report"],
+            "enhanced_user_profile": ["enhanced user profile report"],
+            "invoice_charge": ["invoice charge report"],
+        }
+
+    def _find_notification_by_report_slug(self, report_slug: str, max_age_minutes: int = 60) -> Optional[str]:
+        """
+        Find notification by matching the SECOND <b> tag and validating timestamp.
+
+        Args:
+            report_slug: Slug of the report to find
+            max_age_minutes: Maximum age of notification in minutes
+
+        Returns:
+            XPath of the notification if found and recent, None otherwise
+        """
+        name_mappings = self._create_report_name_mappings()
+        possible_names = name_mappings.get(report_slug, [])
+
+        if not possible_names:
+            self.logger.warning(f"No name mappings for slug '{report_slug}'")
+            return None
+
+        for report_name in possible_names:
+            try:
+                # XPath: Find <li> containing a <span> with SECOND <b> matching report name
+                # Structure:
+                # <span class="ng-star-inserted">
+                #   <b>Costoverview</b> from <b>Cost overview report</b>
+                # </span>
+                notification_xpath = (
+                    f"//li[contains(@class, 'kt-notifi-li')]"
+                    f"[.//span[@class='ng-star-inserted']"
+                    f"/b[2][translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz') = "
+                    f"'{report_name.lower()}']]"
+                )
+
+                # Check if notification exists
+                if not self.browser_wrapper.find_element_by_xpath(notification_xpath, timeout=3000):
+                    self.logger.debug(f"Notification not found for text '{report_name}'")
+                    continue
+
+                self.logger.info(f"Found notification for '{report_slug}' using text '{report_name}'")
+
+                # Validate timestamp
+                if not self._is_notification_recent(notification_xpath, max_age_minutes):
+                    self.logger.warning(f"Notification for '{report_slug}' is too old, skipping")
+                    continue
+
+                # Found and validated!
+                return notification_xpath
+
+            except Exception as e:
+                self.logger.debug(f"Error searching for '{report_name}': {e}")
+                continue
+
+        self.logger.warning(f"No valid recent notification found for '{report_slug}'")
+        return None
+
     def _apply_report_filters(self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict) -> None:
         """Apply account and invoice month filters to the current report.
 
@@ -946,17 +1095,17 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"Error exporting report: {str(e)}")
 
     def _wait_for_and_download_reports(self, generated_reports: List[str], billing_cycle_file_map: dict) -> List[FileDownloadInfo]:
-        """Wait for reports to appear in alerts/notifications and download them.
+        """Wait for reports to appear in alerts/notifications and download them by matching text content.
 
-        Reports are submitted for generation and appear in the Alerts dropdown as they become available.
-        This method monitors the alerts and downloads files as they appear (in reverse order - newest first).
+        Uses intelligent notification matching by report name (second <b> tag) and timestamp validation.
+        Continues processing even if individual reports fail to download.
 
         Args:
-            generated_reports: List of report slugs in generation order
+            generated_reports: List of report slugs that were successfully generated
             billing_cycle_file_map: Mapping of report slug to BillingCycleFile object
 
         Returns:
-            List of FileDownloadInfo objects for downloaded files
+            List of FileDownloadInfo objects for successfully downloaded files
         """
         downloaded_files = []
 
@@ -975,47 +1124,46 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             time.sleep(2)
             self.logger.debug("Notifications list found")
 
-            # Step 3: Download reports (in reverse order - newest first)
-            # Reports are listed with the newest at the top
-            for i, report_slug in enumerate(reversed(generated_reports)):
+            # Step 3: Count available notifications
+            notification_items = self.browser_wrapper.page.locator("//li[contains(@class, 'kt-notifi-li')]")
+            total_notifications = notification_items.count()
+            self.logger.info(f"Generated reports: {len(generated_reports)}, Available notifications: {total_notifications}")
+
+            # Step 4: Download each report by identifying it by text content (NOT position)
+            for report_slug in generated_reports:
                 try:
-                    self.logger.info(f"Downloading report #{i+1}: '{report_slug}'...")
+                    self.logger.info(f"Searching for notification: '{report_slug}'...")
 
-                    # Find the notification item that contains this report
-                    # Each notification is an <li> with class "kt-notifi-li"
-                    # We search for it by the report slug or name in the notification content
-                    notification_item_xpath = f"//li[contains(@class, 'kt-notifi-li')][position()={i+1}]"
+                    # Find notification by text content and validate timestamp (max 60 minutes old)
+                    notification_xpath = self._find_notification_by_report_slug(report_slug, max_age_minutes=60)
 
-                    # Wait for this notification item to be visible
-                    self.browser_wrapper.wait_for_element(notification_item_xpath, timeout=10000)
-                    time.sleep(1)
-                    self.logger.debug(f"Notification item found for report #{i+1}")
+                    if not notification_xpath:
+                        self.logger.warning(f"Skipping '{report_slug}' - notification not found or too old")
+                        continue
 
-                    # Find the download icon within this notification
-                    # Download icon is an <em> with class containing "line-download"
-                    download_icon_xpath = f"{notification_item_xpath}//em[contains(@class, 'line-download')]"
+                    # Find download icon within this specific notification
+                    download_icon_xpath = f"{notification_xpath}//em[contains(@class, 'line-download')]"
 
-                    # Wait for the download icon to be visible
+                    # Wait for download icon
                     self.browser_wrapper.wait_for_element(download_icon_xpath, timeout=10000)
                     time.sleep(1)
 
-                    self.logger.info(f"Download icon found for report '{report_slug}', clicking it...")
-
-                    # Click the download icon to trigger the file download
+                    # Download the file
+                    self.logger.info(f"Downloading '{report_slug}'...")
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                         download_icon_xpath, timeout=30000
                     )
 
                     if downloaded_file_path:
                         actual_file_name = os.path.basename(downloaded_file_path)
-                        self.logger.info(f"File downloaded successfully: {actual_file_name}")
+                        self.logger.info(f"Downloaded: {actual_file_name}")
 
-                        # Get the corresponding BillingCycleFile from the map
+                        # Get corresponding BillingCycleFile
                         corresponding_bcf = billing_cycle_file_map.get(report_slug)
 
-                        # Create FileDownloadInfo with mapping
+                        # Create FileDownloadInfo
                         file_download_info = FileDownloadInfo(
-                            file_id=corresponding_bcf.id if corresponding_bcf else i,
+                            file_id=corresponding_bcf.id if corresponding_bcf else 0,
                             file_name=actual_file_name,
                             download_url="N/A",
                             file_path=downloaded_file_path,
@@ -1026,57 +1174,41 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                         # Log mapping confirmation
                         if corresponding_bcf:
                             self.logger.info(
-                                f"MAPPING CONFIRMED: {actual_file_name} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{report_slug}')"
+                                f"MAPPING: {actual_file_name} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{report_slug}')"
                             )
                         else:
-                            self.logger.warning(f"File downloaded without specific BillingCycleFile mapping")
+                            self.logger.warning(f"No BillingCycleFile mapping for '{report_slug}'")
 
                     else:
-                        self.logger.warning(
-                            f"expect_download_and_click failed for report '{report_slug}', trying traditional method..."
-                        )
-                        # Fallback: Try traditional click
-                        self.browser_wrapper.click_element(download_icon_xpath)
-                        time.sleep(5)
+                        self.logger.error(f"Download failed for '{report_slug}' - no file path returned")
 
-                        estimated_filename = f"bell_report_{report_slug}_{datetime.now().timestamp()}.xlsx"
-                        corresponding_bcf = billing_cycle_file_map.get(report_slug)
-
-                        file_download_info = FileDownloadInfo(
-                            file_id=corresponding_bcf.id if corresponding_bcf else i,
-                            file_name=estimated_filename,
-                            download_url="N/A",
-                            file_path=f"{DOWNLOADS_DIR}/{estimated_filename}",
-                            billing_cycle_file=corresponding_bcf,
-                        )
-                        downloaded_files.append(file_download_info)
-
-                        self.logger.info(f"Download started (traditional method): {estimated_filename}")
-                        if corresponding_bcf:
-                            self.logger.info(
-                                f"MAPPING CONFIRMED: {estimated_filename} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{report_slug}')"
-                            )
-
-                    # Small pause between downloads
                     time.sleep(3)
 
                 except Exception as e:
-                    self.logger.error(f"Error downloading report '{report_slug}': {str(e)}")
+                    self.logger.error(f"Error downloading '{report_slug}': {str(e)}")
+                    # CONTINUE - try next report
                     continue
 
             # Log final summary
-            self.logger.info(f"\nFINAL FILE DOWNLOAD SUMMARY:")
-            self.logger.info(f"   Total files downloaded: {len(downloaded_files)}")
+            self.logger.info(f"\n{'='*80}")
+            self.logger.info(f"DOWNLOAD SUMMARY")
+            self.logger.info(f"{'='*80}")
+            self.logger.info(f"Expected: {len(generated_reports)} | Downloaded: {len(downloaded_files)}")
+
+            if len(downloaded_files) < len(generated_reports):
+                failed_count = len(generated_reports) - len(downloaded_files)
+                self.logger.warning(f"{failed_count} file(s) failed to download")
+
             for idx, file_info in enumerate(downloaded_files, 1):
                 if file_info.billing_cycle_file:
                     bcf = file_info.billing_cycle_file
                     slug = bcf.carrier_report.slug if hasattr(bcf, "carrier_report") and bcf.carrier_report else "N/A"
                     self.logger.info(
-                        f"   [{idx}] {file_info.file_name} -> BillingCycleFile ID {bcf.id} (Slug: '{slug}')"
+                        f"   [{idx}] {file_info.file_name} -> BCF ID {bcf.id} ('{slug}')"
                     )
                 else:
                     self.logger.info(f"   [{idx}] {file_info.file_name} -> NO MAPPING")
-            self.logger.info(f"=====================================")
+            self.logger.info(f"{'='*80}\n")
 
         except Exception as e:
             self.logger.error(f"Error in _wait_for_and_download_reports: {str(e)}")
