@@ -40,7 +40,7 @@ class Client(BaseModel):
     zip_code: str
     phone_number: str
     related_collection: Optional[str] = None
-    is_testing: bool = False
+    is_trial: bool = False
     trial_ends: Optional[datetime] = None
     active: bool = True
     managed_by_expertel: bool = True

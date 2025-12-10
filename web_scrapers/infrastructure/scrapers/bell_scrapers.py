@@ -510,7 +510,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             },
             {
                 "name": "invoice charge report",
-                "slug": "invoice_charge",
+                "slug": "invoice_charge_report",
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
             },
         ]

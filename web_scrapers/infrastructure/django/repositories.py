@@ -43,7 +43,7 @@ class ClientRepository(DjangoFullRepository[ClientEntity, Client]):
             zip_code=model.zip_code,
             phone_number=model.phone_number if model.phone_number else None,
             related_collection=model.related_collection if model.related_collection else None,
-            is_testing=model.is_testing,
+            is_trial=model.is_trial,
             trial_ends=model.trial_ends,
             active=model.active,
             managed_by_expertel=model.managed_by_expertel,

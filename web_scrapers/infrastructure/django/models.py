@@ -12,7 +12,7 @@ class Client(models.Model):
     zip_code = models.CharField(max_length=10)
     phone_number = models.CharField(max_length=20)
     related_collection = models.CharField(max_length=100, null=True, unique=True)
-    is_testing = models.BooleanField(default=False)
+    is_trial = models.BooleanField(default=False)
     trial_ends = models.DateTimeField(null=True)
     active = models.BooleanField(default=True)
     managed_by_expertel = models.BooleanField(default=True)
