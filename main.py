@@ -3,6 +3,20 @@ Main ScraperJob processor with available_at support
 """
 
 import os
+import sys
+import logging
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
+
+# Configure logging BEFORE Django setup and imports
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('main.log', mode='a')
+    ]
+)
 
 import django
 

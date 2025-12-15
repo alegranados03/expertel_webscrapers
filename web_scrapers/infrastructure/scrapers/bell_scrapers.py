@@ -447,6 +447,8 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # Step 3: Click on "Enhanced Mobility Reports" link and switch to new tab
             enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/section/main/div/div/div/ul/li[1]/a"
+            enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/div[1]/section/main/div/div/div/ul/li[1]/a"
+
             current_url = self.browser_wrapper.get_current_url()
             self.logger.debug(f"Current url before clicking Enhanced Mobility: {current_url}")
 
@@ -454,8 +456,8 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.browser_wrapper.click_and_switch_to_new_tab(enhanced_mobility_xpath, timeout=90000)
             self.logger.info("Switched to Enhanced Mobility Reports new tab")
 
-            self.logger.info("Waiting 1 minutes for reports interface to load...")
-            time.sleep(60)
+            self.logger.info("Waiting 30 seconds for reports interface to load...")
+            time.sleep(30)
 
             my_workspace_icon_xpath = '/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[3]'
             self.browser_wrapper.click_element(my_workspace_icon_xpath)
@@ -550,9 +552,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 time.sleep(3)
                 self.logger.info(f"Workbook opened for {report_config['name']}")
 
-                # Step 3: Wait 1 minutes for workbook to load
-                self.logger.info("Waiting 1 minutes for workbook interface to load...")
-                time.sleep(60)
+                # Step 3: Wait 30 seconds for workbook to load
+                self.logger.info("Waiting 30 seconds for workbook interface to load...")
+                time.sleep(30)
 
                 # Step 4: Expand configuration panel
                 expand_config_xpath = "//*[@id='wb-sheet-container']/div/div/div[2]"
