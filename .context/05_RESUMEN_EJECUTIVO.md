@@ -332,7 +332,7 @@ python main.py
 
 # Desarrollo
 python manage.py runserver  # Django admin
-python authenticator_webhook/sms2fa.py  # 2FA webhook
+python mfa/sms2fa.py  # 2FA webhook
 
 # Quality
 poetry run black .
