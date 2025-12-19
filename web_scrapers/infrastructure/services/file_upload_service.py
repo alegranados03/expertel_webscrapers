@@ -67,7 +67,13 @@ class FileUploadService:
 
         return configs.get(upload_type)
 
-    def _upload_single_file(self, file_info: FileDownloadInfo, billing_cycle: BillingCycle, upload_type: str) -> bool:
+    def _upload_single_file(
+        self,
+        file_info: FileDownloadInfo,
+        billing_cycle: BillingCycle,
+        upload_type: str,
+        additional_data: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         """Unified method for uploading a file to the corresponding endpoint."""
         try:
             # Get specific configuration for upload type
@@ -91,6 +97,11 @@ class FileUploadService:
             self.logger.info(f"Uploading {config['description']} file: {file_info.file_name}")
             self.logger.debug(f"Upload URL: {url}")
 
+            # Prepare payload data
+            payload_data = additional_data if additional_data else {}
+            if additional_data:
+                self.logger.info(f"Additional data: {additional_data}")
+
             # Prepare and upload file
             with open(file_info.file_path, "rb") as file:
                 files = {"file": (file_info.file_name, file, config["content_type"])}
@@ -98,7 +109,7 @@ class FileUploadService:
                 response = requests.post(
                     url=url,
                     headers=self._get_headers(billing_cycle),
-                    data={},  # Empty payload, only send file
+                    data=payload_data,
                     files=files,
                     timeout=300,
                 )

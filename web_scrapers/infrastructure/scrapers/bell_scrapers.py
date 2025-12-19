@@ -1399,9 +1399,78 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         time.sleep(60)  # Esperar 60 segundos como especificado
         self.logger.info("Reports section found")
 
+        # Extract pool data before configuring dropdown
+        self._extract_pool_data()
+
         # Configurar dropdown con lógica de fallback
         self._configure_data_share_dropdown()
         time.sleep(30)  # Esperar 30 segundos como especificado
+
+    def _extract_pool_data(self):
+        """Extract pool_size and pool_used from the shared allowance container."""
+        import re
+
+        def gb_to_bytes(gb_value: float) -> int:
+            """Convert GB to bytes."""
+            return int(gb_value * 1024 * 1024 * 1024)
+
+        def extract_gb_value(text: str) -> float:
+            """Extract numeric GB value from text."""
+            match = re.search(r"([\d,]+\.?\d*)\s*GB", text)
+            if match:
+                return float(match.group(1).replace(",", ""))
+            return 0.0
+
+        def extract_used_gb(text: str) -> float:
+            """Extract 'used' GB value from text."""
+            match = re.search(r"([\d,]+\.?\d*)\s*GB\s*used", text, re.IGNORECASE)
+            if match:
+                return float(match.group(1).replace(",", ""))
+            return 0.0
+
+        total_pool_size_gb = 0.0
+        total_pool_used_gb = 0.0
+
+        try:
+            # Get all shared allowance containers
+            containers_xpath = "//*[@id='sharedAllowanceAdminContainer']/div[2]"
+            containers = self.browser_wrapper.page.locator(containers_xpath).all()
+
+            self.logger.info(f"Found {len(containers)} shared allowance containers")
+
+            for i, container in enumerate(containers):
+                try:
+                    # Extract "Included" value (pool size)
+                    included_span = container.locator("div[1]/span").first
+                    if included_span.count() > 0:
+                        included_text = included_span.text_content() or ""
+                        included_gb = extract_gb_value(included_text)
+                        total_pool_size_gb += included_gb
+                        self.logger.info(f"Container {i+1} - Included: {included_gb} GB")
+
+                    # Extract "used" value (pool used)
+                    used_span = container.locator("div[2]/span[1]").first
+                    if used_span.count() > 0:
+                        used_text = used_span.text_content() or ""
+                        used_gb = extract_used_gb(used_text)
+                        total_pool_used_gb += used_gb
+                        self.logger.info(f"Container {i+1} - Used: {used_gb} GB")
+
+                except Exception as e:
+                    self.logger.warning(f"Error extracting data from container {i+1}: {str(e)}")
+                    continue
+
+            # Convert to bytes and set class attributes
+            self.pool_size = gb_to_bytes(total_pool_size_gb)
+            self.pool_used = gb_to_bytes(total_pool_used_gb)
+
+            self.logger.info(f"Total Pool Size: {total_pool_size_gb} GB ({self.pool_size} bytes)")
+            self.logger.info(f"Total Pool Used: {total_pool_used_gb} GB ({self.pool_used} bytes)")
+
+        except Exception as e:
+            self.logger.error(f"Error extracting pool data: {str(e)}")
+            self.pool_size = 0
+            self.pool_used = 0
 
     def _configure_data_share_dropdown(self):
         """Configura el dropdown con lógica de fallback entre Medium y Corp Business Data Share."""

@@ -377,6 +377,9 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
 
 
 class DailyUsageScraperStrategy(ScraperBaseStrategy):
+    # Additional data for daily usage upload - override in subclasses to set actual values
+    pool_size: int = 0
+    pool_used: int = 0
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
@@ -401,6 +404,29 @@ class DailyUsageScraperStrategy(ScraperBaseStrategy):
 
         except Exception as e:
             return ScraperResult(False, error=str(e))
+
+    def _upload_files_to_endpoint(
+        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
+    ) -> bool:
+        """Upload daily usage file with additional pool data."""
+        try:
+            upload_service = FileUploadService()
+            file_info = files[0]
+            additional_data = {
+                "pool_size": self.pool_size,
+                "pool_used": self.pool_used,
+            }
+
+            return upload_service._upload_single_file(
+                file_info=file_info,
+                billing_cycle=billing_cycle,
+                upload_type="daily_usage",
+                additional_data=additional_data,
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error uploading files: {str(e)}")
+            return False
 
     @abstractmethod
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
