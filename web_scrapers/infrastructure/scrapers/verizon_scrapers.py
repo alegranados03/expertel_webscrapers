@@ -22,8 +22,8 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Scraper de reportes mensuales para Verizon: 2 archivos del ZIP + 3 reportes individuales."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de reportes mensuales de Verizon."""
@@ -137,7 +137,9 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 4. Click en download button y esperar 1 minuto
             download_button_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/main/div/div[2]/div[2]/div/div/div[2]/div[4]/div[3]/div/app-reports-list/app-raw-data-download/app-form-modal/div/div[2]/div[2]/div[5]/button"
             print("⏳ Haciendo clic en Download y esperando 1 minuto...")
-            zip_file_path = self.browser_wrapper.expect_download_and_click(download_button_xpath, timeout=120000)
+            zip_file_path = self.browser_wrapper.expect_download_and_click(
+                download_button_xpath, timeout=120000, downloads_dir=self.job_downloads_dir
+            )
             time.sleep(60)  # Esperar 1 minuto adicional
 
             if zip_file_path:
@@ -245,11 +247,13 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             print("⬇️ Descargando Device Payment report...")
 
             corresponding_bcf = file_map.get(VerizonFileSlug.DEVICE_REPORT.value)
-            file_path = self.browser_wrapper.expect_download_and_click(download_xpath, timeout=60000)
+            file_path = self.browser_wrapper.expect_download_and_click(
+                download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+            )
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"✅ Device Payment descargado: {actual_filename}")
+                print(f"Device Payment descargado: {actual_filename}")
 
                 file_info = FileDownloadInfo(
                     file_id=corresponding_bcf.id,
@@ -305,11 +309,13 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             print("⬇️ Descargando Activation & Deactivation report...")
 
             corresponding_bcf = file_map.get(VerizonFileSlug.ACTIVATION_AND_DEACTIVATION.value)
-            file_path = self.browser_wrapper.expect_download_and_click(download_xpath, timeout=60000)
+            file_path = self.browser_wrapper.expect_download_and_click(
+                download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+            )
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"✅ Activation & Deactivation descargado: {actual_filename}")
+                print(f"Activation & Deactivation descargado: {actual_filename}")
 
                 file_info = FileDownloadInfo(
                     file_id=corresponding_bcf.id,
@@ -360,7 +366,9 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             print("⬇️ Descargando Suspended Lines report...")
 
             corresponding_bcf = file_map.get(VerizonFileSlug.SUSPENDED_WIRELESS_NUMBERS.value)
-            file_path = self.browser_wrapper.expect_download_and_click(download_xpath, timeout=60000)
+            file_path = self.browser_wrapper.expect_download_and_click(
+                download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+            )
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
@@ -618,8 +626,8 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class VerizonDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Scraper de uso diario para Verizon siguiendo el patrón de Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de uso diario de Verizon."""
@@ -677,11 +685,13 @@ class VerizonDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 download_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/div[1]/app-reporting-dashboard/div/div[2]/div/div[1]/div/div[1]/div[2]/div"
                 print("⬇️ Descargando Daily Usage report...")
 
-                file_path = self.browser_wrapper.expect_download_and_click(download_xpath, timeout=60000)
+                file_path = self.browser_wrapper.expect_download_and_click(
+                    download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                )
 
                 if file_path:
                     actual_filename = os.path.basename(file_path)
-                    print(f"✅ Daily Usage descargado: {actual_filename}")
+                    print(f"Daily Usage descargado: {actual_filename}")
 
                     file_info = FileDownloadInfo(
                         file_id=daily_usage_file.id,
@@ -784,8 +794,8 @@ class VerizonDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class VerizonPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """Scraper de facturas PDF para Verizon siguiendo el patrón de Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de facturas PDF de Verizon."""
@@ -845,11 +855,13 @@ class VerizonPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             download_pdf_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-view-invoice/div/div[1]/div[1]/div[1]/div/div[2]/app-export-invoice/div/div[1]/div"
             print("📥 Descargando PDF...")
 
-            file_path = self.browser_wrapper.expect_download_and_click(download_pdf_xpath, timeout=60000)
+            file_path = self.browser_wrapper.expect_download_and_click(
+                download_pdf_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+            )
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"✅ PDF descargado: {actual_filename}")
+                print(f"PDF descargado: {actual_filename}")
 
                 file_info = FileDownloadInfo(
                     file_id=pdf_file.id,

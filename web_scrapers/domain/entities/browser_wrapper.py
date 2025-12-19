@@ -173,7 +173,9 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def expect_download_and_click(self, selector: str, timeout: int = 30000, selector_type: str = "xpath") -> Optional[str]:
+    def expect_download_and_click(
+        self, selector: str, timeout: int = 30000, selector_type: str = "xpath", downloads_dir: str = None
+    ) -> Optional[str]:
         """Hace clic esperando una descarga."""
         raise NotImplementedError()
 

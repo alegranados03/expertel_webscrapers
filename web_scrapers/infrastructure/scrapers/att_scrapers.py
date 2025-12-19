@@ -14,15 +14,11 @@ from web_scrapers.domain.entities.scraper_strategies import (
 )
 from web_scrapers.domain.entities.session import Credentials
 
-DOWNLOADS_DIR = os.path.abspath("downloads")
-os.makedirs(DOWNLOADS_DIR, exist_ok=True)
-
-
 class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Scraper de reportes mensuales para AT&T con 7 reportes específicos."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
         self.report_dictionary = {
             "wireless_charges": None,
             "feature_report": None,
@@ -280,7 +276,7 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
                 file_name=renamed_filename,
                 download_url="N/A",
-                file_path=f"{DOWNLOADS_DIR}/{renamed_filename}",
+                file_path=f"{self.job_downloads_dir}/{renamed_filename}",
                 billing_cycle_file=corresponding_bcf,
             )
             downloaded_files.append(file_download_info)
@@ -316,8 +312,8 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Scraper de uso diario para AT&T."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos de uso diario en el portal de AT&T."""
@@ -442,7 +438,7 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 file_id=daily_usage_file.id if daily_usage_file else 1,
                 file_name=renamed_filename,
                 download_url="N/A",
-                file_path=f"{DOWNLOADS_DIR}/{renamed_filename}",
+                file_path=f"{self.job_downloads_dir}/{renamed_filename}",
                 billing_cycle_daily_usage_file=daily_usage_file,
             )
             downloaded_files.append(file_download_info)
@@ -476,8 +472,8 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class ATTPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """Scraper de facturas PDF para AT&T."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de facturas PDF en el portal de AT&T."""
@@ -565,7 +561,7 @@ class ATTPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 file_id=pdf_file.id if pdf_file else 1,
                 file_name=renamed_filename,
                 download_url="N/A",
-                file_path=f"{DOWNLOADS_DIR}/{renamed_filename}",
+                file_path=f"{self.job_downloads_dir}/{renamed_filename}",
                 billing_cycle_pdf_file=pdf_file,
             )
             downloaded_files.append(file_download_info)

@@ -19,8 +19,8 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Scraper de reportes mensuales para Telus siguiendo el patrón de Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de reportes mensuales de Telus."""
@@ -189,8 +189,10 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             for xpath in zip_download_xpaths:
                 try:
                     if self.browser_wrapper.find_element_by_xpath(xpath):
-                        print(f"📦 Intentando descargar ZIP con xpath: {xpath}")
-                        zip_file_path = self.browser_wrapper.expect_download_and_click(xpath, timeout=30000)
+                        print(f"Intentando descargar ZIP con xpath: {xpath}")
+                        zip_file_path = self.browser_wrapper.expect_download_and_click(
+                            xpath, timeout=30000, downloads_dir=self.job_downloads_dir
+                        )
                         if zip_file_path:
                             break
                 except:
@@ -379,12 +381,12 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 # Click en confirm download button y esperar 30 segundos
                 confirm_download_xpath = "/html/body/div[7]/div/div/div[3]/button[1]"
                 downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                    confirm_download_xpath, timeout=30000
+                    confirm_download_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                 )
 
                 if downloaded_file_path:
                     actual_filename = os.path.basename(downloaded_file_path)
-                    print(f"✅ Descargado: {actual_filename}")
+                    print(f"Descargado: {actual_filename}")
 
                     file_info = FileDownloadInfo(
                         file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
@@ -469,13 +471,13 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     # Confirm download button y esperar 30 segundos
                     voice_confirm_xpath = "/html/body/div[8]/div/div/div[3]/button[1]"
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                        voice_confirm_xpath, timeout=30000
+                        voice_confirm_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                     )
 
                     if downloaded_file_path:
                         corresponding_bcf = file_map.get("wireless_voice")
                         actual_filename = os.path.basename(downloaded_file_path)
-                        print(f"✅ Wireless Voice descargado: {actual_filename}")
+                        print(f"Wireless Voice descargado: {actual_filename}")
 
                         file_info = FileDownloadInfo(
                             file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
@@ -523,8 +525,8 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Scraper de uso diario para Telus siguiendo el patrón de Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de uso diario en Telus IQ."""
@@ -700,7 +702,7 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
                         # Descargar archivo
                         downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                            download_link_xpath, timeout=30000
+                            download_link_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                         )
 
                         if downloaded_file_path:
@@ -766,8 +768,8 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """Scraper de facturas PDF para Telus siguiendo el patrón de Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de facturas PDF de Telus."""
@@ -856,7 +858,7 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                     # Hacer click para descargar (se dispara automáticamente)
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                        pdf_button_xpath, timeout=30000
+                        pdf_button_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                     )
 
                     if downloaded_file_path:
@@ -888,7 +890,7 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                             file_id=pdf_file.id if pdf_file else 1,
                             file_name=estimated_filename,
                             download_url="N/A",
-                            file_path=f"{DOWNLOADS_DIR}/{estimated_filename}",
+                            file_path=f"{self.job_downloads_dir}/{estimated_filename}",
                             pdf_file=pdf_file,
                         )
                         downloaded_files.append(file_info)

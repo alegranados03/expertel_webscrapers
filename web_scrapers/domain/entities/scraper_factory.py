@@ -67,11 +67,11 @@ class ScraperStrategyFactory:
         }
 
     def create_scraper(
-        self, carrier: Carrier, scraper_type: ScraperType, browser_wrapper: BrowserWrapper
+        self, carrier: Carrier, scraper_type: ScraperType, browser_wrapper: BrowserWrapper, job_id: int
     ) -> Optional[ScraperBaseStrategy]:
         strategy_class = self._strategies.get((carrier, scraper_type))
 
         if not strategy_class:
             raise ValueError(f"No strategy for carrier {carrier} and type {scraper_type}")
 
-        return strategy_class(browser_wrapper)
+        return strategy_class(browser_wrapper, job_id)

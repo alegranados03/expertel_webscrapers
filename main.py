@@ -139,7 +139,10 @@ class ScraperJobProcessor:
 
             # Create scraper using factory (like in example)
             scraper_strategy = self.scraper_factory.create_scraper(
-                carrier=carrier_enum, scraper_type=scraper_job.type, browser_wrapper=browser_wrapper
+                carrier=carrier_enum,
+                scraper_type=scraper_job.type,
+                browser_wrapper=browser_wrapper,
+                job_id=scraper_job.id,
             )
 
             self.logger.info(f"Scraper created successfully: {scraper_strategy.__class__.__name__}")

@@ -13,8 +13,8 @@ from web_scrapers.domain.entities.scraper_strategies import (
 class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Scraper de reportes mensuales para Rogers."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def get_carrier_name(self) -> str:
         return "ROGERS"
@@ -82,8 +82,8 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class RogersDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Scraper de uso diario para Rogers."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def get_carrier_name(self) -> str:
         return "ROGERS"
@@ -151,8 +151,8 @@ class RogersDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class RogersPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """Scraper de facturas PDF para Rogers."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def get_carrier_name(self) -> str:
         return "ROGERS"

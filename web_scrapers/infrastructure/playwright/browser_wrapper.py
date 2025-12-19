@@ -233,7 +233,9 @@ class PlaywrightWrapper(BrowserWrapper):
             """
         )
 
-    def expect_download_and_click(self, selector: str, timeout: int = 30000, selector_type: str = "xpath") -> str | None:
+    def expect_download_and_click(
+        self, selector: str, timeout: int = 30000, selector_type: str = "xpath", downloads_dir: str = None
+    ) -> str | None:
         resolved = self._resolve_selector(selector, selector_type)
         try:
             with self.page.expect_download(timeout=timeout) as download_info:
@@ -242,7 +244,8 @@ class PlaywrightWrapper(BrowserWrapper):
             download = download_info.value
             suggested_filename = download.suggested_filename
 
-            downloads_dir = os.path.abspath("downloads")
+            if downloads_dir is None:
+                downloads_dir = os.path.abspath("downloads")
             os.makedirs(downloads_dir, exist_ok=True)
             file_path = os.path.join(downloads_dir, suggested_filename)
 
@@ -250,7 +253,7 @@ class PlaywrightWrapper(BrowserWrapper):
             return file_path
 
         except Exception as e:
-            print(f"❌ Error en descarga: {str(e)}")
+            print(f"Error en descarga: {str(e)}")
             return None
 
     def click_and_switch_to_new_tab(self, selector: str, timeout: int = 10000, selector_type: str = "xpath") -> None:

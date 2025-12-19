@@ -23,8 +23,8 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 class BellMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
     """LEGACY: Monthly reports scraper for Bell (old portal). Deprecated - use BellMonthlyReportsScraperStrategy instead."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.report_dictionary = {
             "cost_overview": None,
@@ -272,7 +272,7 @@ class BellMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
                         self.logger.info(f"Downloading file in row #{i}")
 
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                        download_link_xpath, timeout=30000
+                        download_link_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                     )
                     self.logger.debug(f"Downloaded file path: {downloaded_file_path}")
 
@@ -314,7 +314,7 @@ class BellMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
                             file_id=corresponding_bcf.id,
                             file_name=estimated_filename,
                             download_url="N/A",
-                            file_path=f"{DOWNLOADS_DIR}/{estimated_filename}",
+                            file_path=f"{self.job_downloads_dir}/{estimated_filename}",
                             billing_cycle_file=corresponding_bcf,
                         )
                         downloaded_files.append(file_download_info)
@@ -371,8 +371,8 @@ class BellMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
 class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Monthly reports scraper for Bell Enterprise Centre"""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
         self.report_dictionary = {
@@ -1264,7 +1264,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     # Download the file
                     self.logger.info(f"Downloading '{report_slug}'...")
                     downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                        download_icon_xpath, timeout=30000
+                        download_icon_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
                     )
 
                     if downloaded_file_path:
@@ -1332,8 +1332,8 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Daily usage scraper for Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
@@ -1453,7 +1453,7 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
             download = download_info.value
             suggested_filename = f"report_{datetime.now().timestamp()}_{download.suggested_filename}"
-            final_path = os.path.join(DOWNLOADS_DIR, suggested_filename)
+            final_path = os.path.join(self.job_downloads_dir, suggested_filename)
 
             # Guardar en disco
             download.save_as(final_path)
@@ -1500,8 +1500,8 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """PDF invoice scraper for Bell."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
@@ -1689,7 +1689,7 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
             # Descargar archivo PDF usando expect_download_and_click
             downloaded_file_path = self.browser_wrapper.expect_download_and_click(
-                final_download_button_xpath, timeout=30000
+                final_download_button_xpath, timeout=30000, downloads_dir=self.job_downloads_dir
             )
             self.logger.debug(f"Downloaded file path: {downloaded_file_path}")
 
@@ -1757,7 +1757,7 @@ class BellPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                 # Considerar que podría ser ZIP o PDF
                 estimated_filename = f"bell_invoice_{billing_cycle.end_date.strftime('%Y-%m-%d')}.zip"
-                fallback_path = f"{DOWNLOADS_DIR}/{estimated_filename}"
+                fallback_path = f"{self.job_downloads_dir}/{estimated_filename}"
 
                 file_info = FileDownloadInfo(
                     file_id=pdf_file.id,

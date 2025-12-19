@@ -16,8 +16,8 @@ from web_scrapers.domain.entities.scraper_strategies import (
 class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     """Scraper de reportes mensuales para T-Mobile."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la sección de archivos mensuales en el portal de T-Mobile."""
@@ -84,8 +84,8 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     """Scraper de uso diario para T-Mobile con lógica de selección de período y descarga CSV."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de billing y encuentra el primer row del account."""
@@ -359,8 +359,8 @@ class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 class TMobilePDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
     """Scraper de facturas PDF para T-Mobile con lógica de selección de período."""
 
-    def __init__(self, browser_wrapper: BrowserWrapper):
-        super().__init__(browser_wrapper)
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
+        super().__init__(browser_wrapper, job_id=job_id)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la sección de billing y encuentra el primer row del account."""

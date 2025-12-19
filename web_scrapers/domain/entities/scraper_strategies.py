@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import uuid
 import zipfile
 from abc import ABC, abstractmethod
@@ -35,13 +36,33 @@ class ScraperResult:
 
 
 class ScraperBaseStrategy(ABC):
-    def __init__(self, browser_wrapper: BrowserWrapper):
+    def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         self.browser_wrapper = browser_wrapper
+        self.job_id = job_id
+        self.job_downloads_dir: Optional[str] = None
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         raise NotImplementedError()
+
+    def _prepare_job_directory(self) -> str:
+        downloads_base = os.path.abspath("downloads")
+        job_dir = os.path.join(downloads_base, f"job_{self.job_id}")
+
+        if os.path.exists(job_dir):
+            shutil.rmtree(job_dir)
+            self.logger.info(f"Cleaned existing directory for job_{self.job_id}")
+
+        os.makedirs(job_dir, exist_ok=True)
+        self.job_downloads_dir = job_dir
+        self.logger.info(f"Prepared download directory: {job_dir}")
+        return job_dir
+
+    def _cleanup_job_directory(self) -> None:
+        if os.path.exists(self.job_downloads_dir):
+            shutil.rmtree(self.job_downloads_dir)
+            self.logger.info(f"Folder job_{self.job_id} deleted after complete success")
 
     def _create_file_mapping(self, downloaded_files: List[FileDownloadInfo]) -> List[FileMappingInfo]:
         """Convert FileDownloadInfo to mapping format required for endpoints."""
@@ -273,6 +294,9 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
+            # Step 0: Prepare job directory
+            self._prepare_job_directory()
+
             # Step 1: Find files section
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
@@ -300,13 +324,14 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
                 # Perfect success: all files downloaded and uploaded
                 message = f"SUCCESS: All {expected_files_count} files downloaded and uploaded"
                 self.logger.info(message)
+                self._cleanup_job_directory()
                 return ScraperResult(
                     True,
                     message,
                     self._create_file_mapping(upload_tracking['uploaded_files'])
                 )
             else:
-                # Partial or complete failure
+                # Partial or complete failure - keep folder for investigation
                 error_parts = []
 
                 if download_failures > 0:
@@ -326,6 +351,7 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
                 error_message += f"Uploaded: {upload_tracking['successful_uploads']}"
 
                 self.logger.error(error_message)
+                self.logger.warning(f"Folder job_{self.job_id} kept due to errors")
 
                 # Return failure with partial results
                 return ScraperResult(
@@ -354,6 +380,8 @@ class DailyUsageScraperStrategy(ScraperBaseStrategy):
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
+            self._prepare_job_directory()
+
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
                 return ScraperResult(False, error="Could not find files section")
@@ -366,6 +394,7 @@ class DailyUsageScraperStrategy(ScraperBaseStrategy):
             if not upload_result:
                 return ScraperResult(False, error="Error sending files to external endpoint")
 
+            self._cleanup_job_directory()
             return ScraperResult(
                 True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
             )
@@ -388,6 +417,8 @@ class PDFInvoiceScraperStrategy(ScraperBaseStrategy):
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
+            self._prepare_job_directory()
+
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
                 return ScraperResult(False, error="Could not find files section")
@@ -400,6 +431,7 @@ class PDFInvoiceScraperStrategy(ScraperBaseStrategy):
             if not upload_result:
                 return ScraperResult(False, error="Error sending files to external endpoint")
 
+            self._cleanup_job_directory()
             return ScraperResult(
                 True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
             )
