@@ -766,7 +766,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             "cost_overview": ["cost overview report"],
             "usage_overview": ["usage overview report"],
             "enhanced_user_profile": ["enhanced user profile report"],
-            "invoice_charge": ["invoice charge report"],
+            "invoice_charge_report": ["invoice charge report"],
         }
 
     def _find_notification_by_report_slug(self, report_slug: str, max_age_minutes: int = 60) -> Optional[str]:
