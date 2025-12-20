@@ -5,34 +5,33 @@ Este módulo contiene las implementaciones concretas de scrapers para cada carri
 siguiendo el patrón template definido en las clases base.
 """
 
-from .att_scrapers import (
+from web_scrapers.infrastructure.scrapers.att import (
     ATTDailyUsageScraperStrategy,
     ATTMonthlyReportsScraperStrategy,
     ATTPDFInvoiceScraperStrategy,
 )
-
-# Importar todas las implementaciones de scrapers
-from .bell_scrapers import (
+from web_scrapers.infrastructure.scrapers.bell import (
     BellDailyUsageScraperStrategy,
     BellMonthlyReportsScraperStrategy,
+    BellMonthlyReportsScraperStrategyLegacy,
     BellPDFInvoiceScraperStrategy,
 )
-from .rogers_scrapers import (
+from web_scrapers.infrastructure.scrapers.rogers import (
     RogersDailyUsageScraperStrategy,
     RogersMonthlyReportsScraperStrategy,
     RogersPDFInvoiceScraperStrategy,
 )
-from .telus_scrapers import (
+from web_scrapers.infrastructure.scrapers.telus import (
     TelusDailyUsageScraperStrategy,
     TelusMonthlyReportsScraperStrategy,
     TelusPDFInvoiceScraperStrategy,
 )
-from .tmobile_scrapers import (
+from web_scrapers.infrastructure.scrapers.tmobile import (
     TMobileDailyUsageScraperStrategy,
     TMobileMonthlyReportsScraperStrategy,
     TMobilePDFInvoiceScraperStrategy,
 )
-from .verizon_scrapers import (
+from web_scrapers.infrastructure.scrapers.verizon import (
     VerizonDailyUsageScraperStrategy,
     VerizonMonthlyReportsScraperStrategy,
     VerizonPDFInvoiceScraperStrategy,
