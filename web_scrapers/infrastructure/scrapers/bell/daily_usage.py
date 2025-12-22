@@ -127,7 +127,7 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             for i, container in enumerate(containers):
                 try:
                     # Extract "Included" value (pool size)
-                    included_span = container.locator("div[1]/span").first
+                    included_span = container.locator("xpath=div[1]/span").first
                     if included_span.count() > 0:
                         included_text = included_span.text_content() or ""
                         included_gb = extract_gb_value(included_text)
@@ -135,7 +135,7 @@ class BellDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                         self.logger.info(f"Container {i+1} - Included: {included_gb} GB")
 
                     # Extract "used" value (pool used)
-                    used_span = container.locator("div[2]/span[1]").first
+                    used_span = container.locator("xpath=div[2]/span[1]").first
                     if used_span.count() > 0:
                         used_text = used_span.text_content() or ""
                         used_gb = extract_used_gb(used_text)

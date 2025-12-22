@@ -86,41 +86,45 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 print("No se pudo encontrar el mes objetivo, continuando sin ZIP")
 
             # === PARTE 2: DESCARGAR ARCHIVOS INDIVIDUALES DESDE REPORTS SECTION ===
-            print("=== PARTE 2: DESCARGANDO ARCHIVOS INDIVIDUALES ===")
+            # COMENTADO: Esta seccion esta deshabilitada temporalmente.
+            # Los archivos necesarios (individual_detail, mobility_device, group_summary) se obtienen del ZIP.
+            # Si se necesita reactivar, descomentar el codigo a continuacion.
+            #
+            # print("=== PARTE 2: DESCARGANDO ARCHIVOS INDIVIDUALES ===")
+            #
+            # # 1. Navegar a billing header
+            # billing_header_xpath = "/html[1]/body[1]/div[1]/div[1]/ul[1]/li[2]/a[1]/span[1]"
+            # print("Click en billing header...")
+            # self.browser_wrapper.click_element(billing_header_xpath)
+            # self.browser_wrapper.wait_for_page_load()
+            # print("Esperando 1 minuto...")
+            # time.sleep(60)
+            #
+            # # 2. Click en reports header
+            # reports_header_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/a[1]"
+            # print("Click en reports header...")
+            # self.browser_wrapper.click_element(reports_header_xpath)
+            # time.sleep(2)
+            #
+            # # 3. Click en detail reports
+            # detail_reports_xpath = (
+            #     "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[2]/a[1]/span[1]"
+            # )
+            # print("Click en detail reports...")
+            # self.browser_wrapper.click_element(detail_reports_xpath)
+            # self.browser_wrapper.wait_for_page_load()
+            # print("Esperando 1 minuto...")
+            # time.sleep(60)
+            #
+            # # 4. Configurar fecha
+            # self._configure_date_selection(billing_cycle)
+            #
+            # # 5. Descargar reportes individuales
+            # individual_files = self._download_individual_reports(billing_cycle, billing_cycle_file_map)
+            # downloaded_files.extend(individual_files)
+            # print(f"Parte 2 completada: {len(individual_files)} archivos individuales")
 
-            # 1. Navegar a billing header
-            billing_header_xpath = "/html[1]/body[1]/div[1]/div[1]/ul[1]/li[2]/a[1]/span[1]"
-            print("Click en billing header...")
-            self.browser_wrapper.click_element(billing_header_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            print("Esperando 1 minuto...")
-            time.sleep(60)
-
-            # 2. Click en reports header
-            reports_header_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/a[1]"
-            print("Click en reports header...")
-            self.browser_wrapper.click_element(reports_header_xpath)
-            time.sleep(2)
-
-            # 3. Click en detail reports
-            detail_reports_xpath = (
-                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[3]/ul[1]/li[3]/ul[1]/li[2]/a[1]/span[1]"
-            )
-            print("Click en detail reports...")
-            self.browser_wrapper.click_element(detail_reports_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            print("Esperando 1 minuto...")
-            time.sleep(60)
-
-            # 4. Configurar fecha
-            self._configure_date_selection(billing_cycle)
-
-            # 5. Descargar reportes individuales
-            individual_files = self._download_individual_reports(billing_cycle, billing_cycle_file_map)
-            downloaded_files.extend(individual_files)
-            print(f"Parte 2 completada: {len(individual_files)} archivos individuales")
-
-            # 6. Reset a pantalla principal
+            # Reset a pantalla principal
             self._reset_to_main_screen()
 
             print(f"DESCARGA TOTAL COMPLETADA: {len(downloaded_files)} archivos")
@@ -242,19 +246,11 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         filename_lower = filename.lower()
 
         # Mapeo de patrones de nombres de archivos ZIP a slugs de Telus
+        # Solo 3 slugs activos: individual_detail, mobility_device, group_summary
         pattern_to_slug = {
-            "account_detail": "invoice_detail",
-            "airtime_detail": "airtime_detail",
-            "dew_report": "wireless_data",
             "group_summary": "group_summary",
             "individual_detail": "individual_detail",
-            "invoice_summary": "wireless_subscriber_charges",
-            # Patrones adicionales para archivos individuales
-            "wireless_subscriber_charges": "wireless_subscriber_charges",
-            "wireless_subscriber_usage": "wireless_subscriber_usage",
             "mobility_device": "mobility_device",
-            "wireless_voice": "wireless_voice",
-            "wireless_data": "wireless_data",
         }
 
         for pattern, slug in pattern_to_slug.items():

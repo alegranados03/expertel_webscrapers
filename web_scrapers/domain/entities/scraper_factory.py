@@ -4,32 +4,22 @@ from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
 from web_scrapers.domain.entities.scraper_strategies import ScraperBaseStrategy
 from web_scrapers.domain.entities.session import Carrier
 from web_scrapers.domain.enums import ScraperType
-from web_scrapers.infrastructure.scrapers.att_scrapers import (
+from web_scrapers.infrastructure.scrapers import (
     ATTDailyUsageScraperStrategy,
     ATTMonthlyReportsScraperStrategy,
     ATTPDFInvoiceScraperStrategy,
-)
-from web_scrapers.infrastructure.scrapers.bell_scrapers import (
     BellDailyUsageScraperStrategy,
     BellMonthlyReportsScraperStrategy,
     BellPDFInvoiceScraperStrategy,
-)
-from web_scrapers.infrastructure.scrapers.rogers_scrapers import (
     RogersDailyUsageScraperStrategy,
     RogersMonthlyReportsScraperStrategy,
     RogersPDFInvoiceScraperStrategy,
-)
-from web_scrapers.infrastructure.scrapers.telus_scrapers import (
     TelusDailyUsageScraperStrategy,
     TelusMonthlyReportsScraperStrategy,
     TelusPDFInvoiceScraperStrategy,
-)
-from web_scrapers.infrastructure.scrapers.tmobile_scrapers import (
     TMobileDailyUsageScraperStrategy,
     TMobileMonthlyReportsScraperStrategy,
     TMobilePDFInvoiceScraperStrategy,
-)
-from web_scrapers.infrastructure.scrapers.verizon_scrapers import (
     VerizonDailyUsageScraperStrategy,
     VerizonMonthlyReportsScraperStrategy,
     VerizonPDFInvoiceScraperStrategy,

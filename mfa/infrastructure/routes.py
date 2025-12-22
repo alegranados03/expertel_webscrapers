@@ -60,7 +60,7 @@ async def code_extractor(carrier: str, email_alias: str, carrier_from_email: str
         yield sse_event("done", {"carrier": carrier})
         return
 
-    start_time = datetime.now(timezone.utc)  - timedelta(days=1)
+    start_time = datetime.now(timezone.utc)
 
     while elapsed < TIMEOUT_SECONDS:
         messages = await get_messages_async(checker, email_alias, start_time, carrier_from_email)

@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Optional
 
@@ -8,12 +9,15 @@ from web_scrapers.domain.entities.session import Credentials
 from web_scrapers.domain.enums import CarrierPortalUrls
 from web_scrapers.infrastructure.playwright.browser_wrapper import BrowserWrapper
 
+# Default MFA webhook URL - can be overridden via environment variable
+DEFAULT_MFA_SERVICE_URL = os.getenv("MFA_SERVICE_URL", "http://localhost:8000")
+
 
 class BellEnterpriseAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -88,9 +92,9 @@ class BellEnterpriseAuthStrategy(AuthBaseStrategy):
 
 class BellAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -231,9 +235,9 @@ class BellAuthStrategy(AuthBaseStrategy):
 
 class TelusAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -343,9 +347,9 @@ class TelusAuthStrategy(AuthBaseStrategy):
 
 class RogersAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -400,7 +404,7 @@ class RogersAuthStrategy(AuthBaseStrategy):
 
 class ATTAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url
 
@@ -559,7 +563,7 @@ class ATTAuthStrategy(AuthBaseStrategy):
 
 class TMobileAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url
 
@@ -668,7 +672,7 @@ class TMobileAuthStrategy(AuthBaseStrategy):
 
 class VerizonAuthStrategy(AuthBaseStrategy):
 
-    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = "http://localhost:8000"):
+    def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url
 

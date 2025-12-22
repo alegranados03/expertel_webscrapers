@@ -367,68 +367,75 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             self.logger.info("Navigating to Bell Enterprise Centre reports...")
 
-            # Step 1: Click on "My Reports" list item
-            # Try with li:nth-child(3) first, then fallback to li:nth-child(2) if not found
-            my_reports_selectors = [
-                '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button',
-                '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(2) > button'
-            ]
+            # Enhanced Mobility Reports link - used to check if we're already in Service section
+            enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/div[1]/section/main/div/div/div/ul/li[1]/a"
 
-            my_reports_button_clicked = False
-            for selector in my_reports_selectors:
-                try:
-                    self.logger.debug(f"Trying selector: {selector}")
-                    # Check if element exists
-                    if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
-                        # Validate that the button contains "My Reports" text
-                        button_text = self.browser_wrapper.get_text(selector, selector_type="css")
-                        if "My Reports" in button_text:
-                            self.logger.info(f"Found 'My Reports' button with text: {button_text}")
+            # Step 1: Check if we're already in Service section
+            already_in_service = False
+            try:
+                if self.browser_wrapper.find_element_by_xpath(enhanced_mobility_xpath, timeout=3000):
+                    self.logger.info("Already in Service section - skipping navigation")
+                    already_in_service = True
+            except:
+                self.logger.info("Not in Service section, navigating there...")
+
+            # Step 2: If NOT in Service, do full navigation (My Reports -> Service)
+            if not already_in_service:
+                # Step 2a: Click on "My Reports"
+                my_reports_selectors = [
+                    '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button',
+                    '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(2) > button'
+                ]
+
+                my_reports_button_clicked = False
+                for selector in my_reports_selectors:
+                    try:
+                        self.logger.debug(f"Trying selector: {selector}")
+                        if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
+                            button_text = self.browser_wrapper.get_text(selector, selector_type="css")
+                            if "My Reports" in button_text:
+                                self.logger.info(f"Found 'My Reports' button with text: {button_text}")
+                                self.browser_wrapper.click_element(selector, selector_type="css")
+                                self.browser_wrapper.wait_for_page_load()
+                                time.sleep(2)
+                                self.logger.info("My Reports section opened")
+                                my_reports_button_clicked = True
+                                break
+                            else:
+                                self.logger.warning(f"Selector matched but text doesn't contain 'My Reports': {button_text}")
+                    except Exception as e:
+                        self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
+                        continue
+
+                if not my_reports_button_clicked:
+                    raise Exception("Could not find 'My Reports' button in any of the expected positions")
+
+                # Step 2b: Click on "Service" sub-menu
+                service_sub_selectors = [
+                    "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)",
+                    "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(2) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
+                ]
+
+                service_sub_clicked = False
+                for selector in service_sub_selectors:
+                    try:
+                        self.logger.debug(f"Trying selector: {selector}")
+                        if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
+                            self.logger.info(f"Found 'Service' sub-menu with selector")
                             self.browser_wrapper.click_element(selector, selector_type="css")
                             self.browser_wrapper.wait_for_page_load()
                             time.sleep(2)
-                            self.logger.info("My Reports section opened")
-                            my_reports_button_clicked = True
+                            self.logger.info("Service sub-menu accessed")
+                            service_sub_clicked = True
                             break
-                        else:
-                            self.logger.warning(f"Selector matched but text doesn't contain 'My Reports': {button_text}")
-                except Exception as e:
-                    self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
-                    continue
+                    except Exception as e:
+                        self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
+                        continue
 
-            if not my_reports_button_clicked:
-                raise Exception("Could not find 'My Reports' button in any of the expected positions")
-
-            # Step 2: Click on "Service" sub-menu item
-            service_sub_selectors = [
-                "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)",
-                "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(2) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
-            ]
-
-            service_sub_clicked = False
-            for selector in service_sub_selectors:
-                try:
-                    self.logger.debug(f"Trying selector: {selector}")
-                    # Check if element exists
-                    if self.browser_wrapper.find_element_by_xpath(selector, selector_type="css"):
-                        self.logger.info(f"Found 'Service' sub-menu with selector")
-                        self.browser_wrapper.click_element(selector, selector_type="css")
-                        self.browser_wrapper.wait_for_page_load()
-                        time.sleep(2)
-                        self.logger.info("Service sub-menu accessed")
-                        service_sub_clicked = True
-                        break
-                except Exception as e:
-                    self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
-                    continue
-
-            if not service_sub_clicked:
-                raise Exception("Could not find 'Service' sub-menu in any of the expected positions")
+                if not service_sub_clicked:
+                    raise Exception("Could not find 'Service' sub-menu in any of the expected positions")
 
             # Step 3: Click on "Enhanced Mobility Reports" link and switch to new tab
-            enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/section/main/div/div/div/ul/li[1]/a"
-            enhanced_mobility_xpath = "//*[@id='ec-goa-reports-app']/div[1]/section/main/div/div/div/ul/li[1]/a"
-
             current_url = self.browser_wrapper.get_current_url()
             self.logger.debug(f"Current url before clicking Enhanced Mobility: {current_url}")
 
