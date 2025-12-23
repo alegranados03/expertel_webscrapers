@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from typing import Any, List, Optional
@@ -18,6 +19,7 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Busca la seccion de archivos de uso diario en el portal de AT&T."""
@@ -29,29 +31,29 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         """Busca la seccion de archivos de uso diario con reintento automatico."""
         for attempt in range(max_retries + 1):
             try:
-                print(f"Buscando seccion de uso diario AT&T (intento {attempt + 1}/{max_retries + 1})")
+                self.logger.info(f"Searching for AT&T daily usage section (attempt {attempt + 1}/{max_retries + 1})")
 
                 # 1. Click en reports tab y esperar 1 minuto
                 reports_tab_xpath = "/html/body/div[1]/div/ul/li[4]/a"
-                print("Haciendo clic en Reports tab...")
+                self.logger.info("Clicking Reports tab...")
                 self.browser_wrapper.click_element(reports_tab_xpath)
                 time.sleep(60)  # Esperar 1 minuto como especificado
 
                 # 2. Click en reports section y esperar 1 minuto
                 reports_section_xpath = "/html/body/div[1]/div/div[17]/div/div[2]/div[1]"
-                print("Haciendo clic en Reports section...")
+                self.logger.info("Clicking Reports section...")
                 self.browser_wrapper.click_element(reports_section_xpath)
                 time.sleep(60)  # Esperar 1 minuto como especificado
 
                 # 3. Click en internal reports tab
                 internal_reports_tab_xpath = "/html/body/div[1]/main/div[1]/div/div/div/div/div[3]/ul[1]/li[4]/a"
-                print("Haciendo clic en Internal reports tab...")
+                self.logger.info("Clicking Internal reports tab...")
                 self.browser_wrapper.click_element(internal_reports_tab_xpath)
                 time.sleep(3)
 
                 # 4. Click en summary option
                 summary_option_xpath = "/html/body/div[1]/main/div[1]/div/div/div/div/div[3]/ul[1]/li[4]/ul/li[2]/a"
-                print("Haciendo clic en Summary option...")
+                self.logger.info("Clicking Summary option...")
                 self.browser_wrapper.click_element(summary_option_xpath)
                 time.sleep(5)
 
@@ -61,21 +63,21 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                     # Verificar que el texto sea "Charges and usage"
                     section_text = self.browser_wrapper.get_text(charges_tab_section_xpath)
                     if section_text and "Charges and usage" in section_text:
-                        print("Seccion de uso diario encontrada exitosamente")
+                        self.logger.info("Daily usage section found successfully")
                         return {"section": "daily_usage", "ready_for_download": True}
                     else:
-                        print(f"Texto de seccion no coincide: {section_text}")
+                        self.logger.warning(f"Section text does not match: {section_text}")
                         continue
                 else:
-                    print("No se encontro la seccion de uso diario")
+                    self.logger.warning("Daily usage section not found")
                     continue
 
             except Exception as e:
-                print(f"Error en intento {attempt + 1}: {str(e)}")
+                self.logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
                 if attempt < max_retries:
                     continue
 
-        print("No se pudo encontrar la seccion de uso diario despues de todos los intentos")
+        self.logger.error("Could not find daily usage section after all attempts")
         return None
 
     def _download_files(
@@ -88,14 +90,14 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         daily_usage_file = None
         if billing_cycle.daily_usage_files:
             daily_usage_file = billing_cycle.daily_usage_files[0]
-            print(f"Archivo de uso diario encontrado: ID {daily_usage_file.id}")
+            self.logger.info(f"Daily usage file found: ID {daily_usage_file.id}")
 
         try:
-            print("Descargando archivo de uso diario...")
+            self.logger.info("Downloading daily usage file...")
 
             # 1. Click en unbilled usage tab
             unbilled_tab_xpath = "/html/body/div[1]/main/form/div[2]/div[3]/div[1]/ul/li[2]/a"
-            print("Haciendo clic en Unbilled usage tab...")
+            self.logger.info("Clicking Unbilled usage tab...")
             self.browser_wrapper.click_element(unbilled_tab_xpath)
             time.sleep(3)
 
@@ -103,25 +105,25 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             unbilled_report_xpath = (
                 "/html/body/div[1]/main/form/div[2]/div[3]/div[2]/div[3]/div/div/div[2]/ul/li/button"
             )
-            print("Haciendo clic en Unbilled usage report section...")
+            self.logger.info("Clicking Unbilled usage report section...")
             self.browser_wrapper.click_element(unbilled_report_xpath)
             time.sleep(60)  # Esperar 1 minuto como especificado
 
             # 3. Click en download
             download_button_xpath = "/html/body/div[1]/main/div[2]/form/div[2]/div[2]/div/div/button[4]"
-            print("Haciendo clic en Download...")
+            self.logger.info("Clicking Download...")
             self.browser_wrapper.click_element(download_button_xpath)
             time.sleep(2)
 
             # 4. Click en csv option
             csv_option_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/form/div[1]/div/div/fieldset/label[2]"
-            print("Seleccionando opcion CSV...")
+            self.logger.info("Selecting CSV option...")
             self.browser_wrapper.click_element(csv_option_xpath)
             time.sleep(1)
 
             # 5. Click en OK button y esperar descarga
             ok_button_xpath = "/html/body/div[1]/div[1]/div/div/div[3]/button[1]"
-            print("Haciendo clic en OK...")
+            self.logger.info("Clicking OK...")
 
             file_path = self.browser_wrapper.expect_download_and_click(
                 ok_button_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
@@ -129,7 +131,7 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"Archivo descargado: {actual_filename}")
+                self.logger.info(f"File downloaded: {actual_filename}")
 
                 # Crear FileDownloadInfo
                 file_download_info = FileDownloadInfo(
@@ -142,22 +144,22 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 downloaded_files.append(file_download_info)
 
                 if daily_usage_file:
-                    print(
-                        f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                    self.logger.info(
+                        f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
                     )
                 else:
-                    print("Archivo descargado sin mapeo especifico de BillingCycleDailyUsageFile")
+                    self.logger.warning("File downloaded without specific BillingCycleDailyUsageFile mapping")
             else:
-                print("No se pudo descargar el archivo de uso diario")
+                self.logger.error("Could not download daily usage file")
 
             # 6. Reset a pantalla principal
             self._reset_to_main_screen()
 
-            print(f"Descarga de uso diario completada: {len(downloaded_files)} archivo(s)")
+            self.logger.info(f"Daily usage download completed: {len(downloaded_files)} file(s)")
             return downloaded_files
 
         except Exception as e:
-            print(f"Error descargando archivos de uso diario: {str(e)}")
+            self.logger.error(f"Error downloading daily usage files: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
@@ -167,10 +169,9 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de AT&T."""
         try:
-            print("Reseteando a pantalla inicial de AT&T...")
+            self.logger.info("Resetting to AT&T initial screen...")
             self.browser_wrapper.goto("https://www.wireless.att.com/premiercare/")
-            self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            print("Reset a AT&T completado")
+            self.logger.info("Reset to AT&T completed")
         except Exception as e:
-            print(f"Error en reset de AT&T: {str(e)}")
+            self.logger.error(f"Error in AT&T reset: {str(e)}")

@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from typing import Optional
@@ -406,11 +407,12 @@ class ATTAuthStrategy(AuthBaseStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def login(self, credentials: Credentials) -> bool:
         try:
-            print("Starting login in AT&T...")
+            self.logger.info("Starting login in AT&T...")
 
             self.browser_wrapper.goto(self.get_login_url())
             self.browser_wrapper.wait_for_page_load(60000)
@@ -419,70 +421,64 @@ class ATTAuthStrategy(AuthBaseStrategy):
             username_xpath = (
                 "/html/body/app-root/div/div/div/div/app-login-general/app-card/div/div/div/form/div[1]/input"
             )
-            print(f"Entering username: {credentials.username}")
+            self.logger.info(f"Entering username: {credentials.username}")
             self.browser_wrapper.type_text(username_xpath, credentials.username)
             time.sleep(1)
 
             continue_button_xpath = (
                 "/html/body/app-root/div/div/div/div/app-login-general/app-card/div/div/div/form/div[3]/button"
             )
-            print("Clicking Continue...")
+            self.logger.info("Clicking Continue...")
             self.browser_wrapper.click_element(continue_button_xpath)
-            self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
 
             password_xpath = (
                 "/html/body/app-root/div/div/div/div/app-login-password/app-card/div/div/div/form/div[2]/input"
             )
-            print("Entering password...")
+            self.logger.info("Entering password...")
             self.browser_wrapper.type_text(password_xpath, credentials.password)
             time.sleep(1)
 
             signin_button_xpath = (
                 "/html/body/app-root/div/div/div/div/app-login-password/app-card/div/div/div/form/div[3]/button"
             )
-            print("Clicking Sign In...")
+            self.logger.info("Clicking Sign In...")
             self.browser_wrapper.click_element(signin_button_xpath)
-
-            self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
+            self.logger.info("Checking for 2FA...")
             if not self._handle_2fa_if_present(credentials):
-                print("2FA failed - interrupting login")
+                self.logger.warning("2FA failed - interrupting login")
                 return False
 
             return self.is_logged_in()
 
         except MFACodeError as e:
-            print(f"MFA error during login in AT&T: {str(e)}")
+            self.logger.error(f"MFA error during login in AT&T: {str(e)}")
             return False
         except Exception as e:
-            print(f"Error during login in AT&T: {str(e)}")
+            self.logger.error(f"Error during login in AT&T: {str(e)}")
             return False
 
     def logout(self) -> bool:
         try:
-            print("Starting logout in AT&T...")
+            self.logger.info("Starting logout in AT&T...")
 
             self.browser_wrapper.goto("https://www.wireless.att.com/premiercare/")
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
-
+            time.sleep(30)
             if not self.is_logged_in():
-                print("User already logged out")
+                self.logger.info("User already logged out")
                 return True
 
             logout_button_xpath = "/html/body/div[1]/div/div[1]/ul/li[4]/a"
-            print("Clicking Logout...")
+            self.logger.info("Clicking Logout...")
             self.browser_wrapper.click_element(logout_button_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
-
-            print("Logout successful in AT&T")
+            time.sleep(15)
+            self.logger.info("Logout successful in AT&T")
             return True
 
         except Exception as e:
-            print(f"Error during logout in AT&T: {str(e)}")
+            self.logger.error(f"Error during logout in AT&T: {str(e)}")
             return False
 
     def is_logged_in(self) -> bool:
@@ -490,7 +486,6 @@ class ATTAuthStrategy(AuthBaseStrategy):
             current_url = self.browser_wrapper.get_current_url()
             if "premiercare" not in current_url.lower():
                 self.browser_wrapper.goto("https://www.wireless.att.com/premiercare/")
-                self.browser_wrapper.wait_for_page_load()
                 time.sleep(2)
 
             my_profile_xpath = "/html/body/div[1]/div/div[2]/p/a"
@@ -502,7 +497,7 @@ class ATTAuthStrategy(AuthBaseStrategy):
             return False
 
         except Exception as e:
-            print(f"Error verifying login status: {str(e)}")
+            self.logger.error(f"Error verifying login status: {str(e)}")
             return False
 
     def get_login_url(self) -> str:
@@ -521,51 +516,59 @@ class ATTAuthStrategy(AuthBaseStrategy):
         return "/html/body/app-root/div/div/div/div/app-login-password/app-card/div/div/div/form/div[3]/button"
 
     def _handle_2fa_if_present(self, credentials: Credentials) -> bool:
-        print("Checking if 2FA is required...")
+        self.logger.info("Checking if 2FA is required...")
 
-        sms_label_xpath = "/html/body/div[2]/div/form[1]/fieldset/div[1]/fieldset/div[1]/label"
-        if not self.browser_wrapper.is_element_visible(sms_label_xpath, timeout=10000):
-            print("No 2FA elements detected")
+        email_option_xpath = "//*[@id='option_3']"
+        if not self.browser_wrapper.is_element_visible(email_option_xpath, timeout=10000):
+            self.logger.info("No 2FA elements detected")
             return True
 
-        print("2FA flow detected, proceeding...")
+        self.logger.info("2FA flow detected, proceeding...")
 
-        print("Selecting SMS option...")
-        self.browser_wrapper.click_element(sms_label_xpath)
+        self.logger.info("Selecting Email option...")
+        self.browser_wrapper.click_element(email_option_xpath)
         time.sleep(2)
 
-        send_code_button_xpath = "/html/body/div[2]/div/form[1]/fieldset/div[4]/input[3]"
-        print("Requesting SMS code...")
+        send_code_button_xpath = "//*[@id='submitVerifyIdentity']"
+        self.logger.info("Requesting Email code...")
         self.browser_wrapper.click_element(send_code_button_xpath)
         time.sleep(3)
 
-        print("Waiting for MFA code from SSE endpoint...")
+        self.logger.info("Waiting for MFA code from SSE endpoint...")
         endpoint_url = f"{self.webhook_url}/api/v1/att"
         code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
 
-        print(f"Code received: {code}")
+        self.logger.info(f"Code received: {code}")
 
         code_input_xpath = "/html/body/div[2]/div/form[1]/fieldset/div[1]/input[1]"
-        print("Entering 2FA code...")
+        self.logger.info("Entering 2FA code...")
         self.browser_wrapper.type_text(code_input_xpath, code)
         time.sleep(1)
 
         continue_button_xpath = "/html/body/div[2]/div/form[1]/fieldset/div[4]/input[3]"
-        print("Submitting 2FA code...")
+        self.logger.info("Submitting 2FA code...")
         self.browser_wrapper.click_element(continue_button_xpath)
+        time.sleep(30)
+        self._dismiss_modal_if_present()
 
-        self.browser_wrapper.wait_for_page_load()
-        time.sleep(5)
-
-        print("2FA processed successfully")
+        self.logger.info("2FA processed successfully")
         return True
+
+    def _dismiss_modal_if_present(self) -> None:
+        modal_close_xpath = "/html/body/uws-wrapper[2]/div[2]/div/div[4]/div[2]"
+        if self.browser_wrapper.is_element_visible(modal_close_xpath, timeout=5000):
+            self.logger.info("Modal detected, dismissing...")
+            self.browser_wrapper.click_element(modal_close_xpath)
+            time.sleep(2)
+        else:
+            self.logger.debug("No modal detected")
 
 
 class TMobileAuthStrategy(AuthBaseStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -674,7 +677,7 @@ class VerizonAuthStrategy(AuthBaseStrategy):
 
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
-        self.webhook_url = webhook_url
+        self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
 
     def login(self, credentials: Credentials) -> bool:
         try:

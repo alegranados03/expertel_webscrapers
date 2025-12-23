@@ -89,12 +89,11 @@ class VerizonFileSlug(str, Enum):
 
 class ATTFileSlug(str, Enum):
     WIRELESS_CHARGES = "wireless_charges"
-    FEATURE_REPORT = "feature_report"
     USAGE_DETAILS = "usage_details"
-    FEES_AND_TAXES = "fees_and_taxes"
     MONTHLY_CHARGES = "monthly_charges"
     DEVICE_INSTALLMENT = "device_installment"
     UPGRADE_AND_INVENTORY = "upgrade_and_inventory"
+    ALL_BILLING_CYCLE_CHARGES = "all_billing_cycle_charges"
 
 
 class TMobileFileSlug(str, Enum):
