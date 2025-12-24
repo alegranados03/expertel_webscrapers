@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import traceback
 from typing import Any, List, Optional
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -33,43 +34,42 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             try:
                 self.logger.info(f"Searching for AT&T daily usage section (attempt {attempt + 1}/{max_retries + 1})")
 
-                # 1. Click en reports tab y esperar 1 minuto
-                reports_tab_xpath = "/html/body/div[1]/div/ul/li[4]/a"
+                # 1. Click en Reports tab
+                reports_tab_xpath = '//*[@id="reportsTab"]/a'
                 self.logger.info("Clicking Reports tab...")
                 self.browser_wrapper.click_element(reports_tab_xpath)
-                time.sleep(60)  # Esperar 1 minuto como especificado
+                time.sleep(30)
 
-                # 2. Click en reports section y esperar 1 minuto
-                reports_section_xpath = "/html/body/div[1]/div/div[17]/div/div[2]/div[1]"
-                self.logger.info("Clicking Reports section...")
+                # 2. Click en Report section container
+                reports_section_xpath = '//*[@id="functionality"]/div/div[2]/div[1]'
+                self.logger.info("Clicking Report section container...")
                 self.browser_wrapper.click_element(reports_section_xpath)
-                time.sleep(60)  # Esperar 1 minuto como especificado
+                time.sleep(60)
 
-                # 3. Click en internal reports tab
-                internal_reports_tab_xpath = "/html/body/div[1]/main/div[1]/div/div/div/div/div[3]/ul[1]/li[4]/a"
-                self.logger.info("Clicking Internal reports tab...")
-                self.browser_wrapper.click_element(internal_reports_tab_xpath)
+                # 3. Click en Internal Reports dropdown
+                internal_reports_xpath = '//*[@id="navMenuGroupReports"]'
+                self.logger.info("Clicking Internal Reports dropdown...")
+                self.browser_wrapper.click_element(internal_reports_xpath)
                 time.sleep(3)
 
-                # 4. Click en summary option
-                summary_option_xpath = "/html/body/div[1]/main/div[1]/div/div/div/div/div[3]/ul[1]/li[4]/ul/li[2]/a"
+                # 4. Click en Summary option
+                summary_option_xpath = '//*[@id="navMenuItem5"]'
                 self.logger.info("Clicking Summary option...")
                 self.browser_wrapper.click_element(summary_option_xpath)
                 time.sleep(5)
 
-                # 5. Verificar que encontramos la seccion correcta
-                charges_tab_section_xpath = "/html/body/div[1]/main/form/div[2]/div[3]/div[1]/ul/li[1]/a/span"
-                if self.browser_wrapper.is_element_visible(charges_tab_section_xpath, timeout=10000):
-                    # Verificar que el texto sea "Charges and usage"
-                    section_text = self.browser_wrapper.get_text(charges_tab_section_xpath)
-                    if section_text and "Charges and usage" in section_text:
-                        self.logger.info("Daily usage section found successfully")
+                # 5. Verificar que encontramos la seccion correcta (tabs visibles)
+                tabs_list_xpath = '//*[@id="main-content"]/div[1]/div[2]/div[1]/ul'
+                if self.browser_wrapper.is_element_visible(tabs_list_xpath, timeout=10000):
+                    tabs_text = self.browser_wrapper.get_text(tabs_list_xpath)
+                    if tabs_text and "Unbilled usage" in tabs_text:
+                        self.logger.info("Summary section found successfully - Unbilled usage tab available")
                         return {"section": "daily_usage", "ready_for_download": True}
                     else:
-                        self.logger.warning(f"Section text does not match: {section_text}")
+                        self.logger.warning(f"Tabs text does not contain 'Unbilled usage': {tabs_text}")
                         continue
                 else:
-                    self.logger.warning("Daily usage section not found")
+                    self.logger.warning("Tabs list not found")
                     continue
 
             except Exception as e:
@@ -86,6 +86,12 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         """Descarga los archivos de uso diario de AT&T."""
         downloaded_files = []
 
+        # Nombres de reporte a buscar (en orden de prioridad)
+        report_names = [
+            "Unbilled usage details totals (GB usage)",
+            "Unbilled usage details totals",
+        ]
+
         # Mapear BillingCycleDailyUsageFile
         daily_usage_file = None
         if billing_cycle.daily_usage_files:
@@ -95,38 +101,60 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         try:
             self.logger.info("Downloading daily usage file...")
 
-            # 1. Click en unbilled usage tab
-            unbilled_tab_xpath = "/html/body/div[1]/main/form/div[2]/div[3]/div[1]/ul/li[2]/a"
+            # 1. Click en "Unbilled usage" tab
+            unbilled_tab_xpath = '//*[@id="navTabItem5-2"]'
             self.logger.info("Clicking Unbilled usage tab...")
+            if not self.browser_wrapper.is_element_visible(unbilled_tab_xpath, timeout=10000):
+                self.logger.error("Unbilled usage tab not found")
+                return downloaded_files
             self.browser_wrapper.click_element(unbilled_tab_xpath)
-            time.sleep(3)
+            time.sleep(5)
 
-            # 2. Click en unbilled usage report section y esperar 1 minuto
-            unbilled_report_xpath = (
-                "/html/body/div[1]/main/form/div[2]/div[3]/div[2]/div[3]/div/div/div[2]/ul/li/button"
-            )
-            self.logger.info("Clicking Unbilled usage report section...")
-            self.browser_wrapper.click_element(unbilled_report_xpath)
-            time.sleep(60)  # Esperar 1 minuto como especificado
+            # 2. Configurar filtro de cuenta
+            self._configure_account_filter(billing_cycle)
 
-            # 3. Click en download
-            download_button_xpath = "/html/body/div[1]/main/div[2]/form/div[2]/div[2]/div/div/button[4]"
-            self.logger.info("Clicking Download...")
-            self.browser_wrapper.click_element(download_button_xpath)
+            # 3. Buscar y hacer click en el reporte correcto dentro del accordion
+            # El section_name es "Unbilled details" para buscar en el panel correcto
+            if not self._find_and_click_report("Unbilled details", report_names):
+                self.logger.error("Could not find unbilled usage report")
+                self._reset_to_main_screen()
+                return downloaded_files
+
+            # 4. Esperar 60 segundos para que cargue el reporte
+            self.logger.info("Waiting 60 seconds for report to load...")
+            time.sleep(60)
+
+            # 5. Click en Export button
+            export_button_xpath = '//*[@id="export"]'
+            if not self.browser_wrapper.is_element_visible(export_button_xpath, timeout=10000):
+                self.logger.error("Export button not found")
+                self._go_back_to_reports()
+                self._reset_to_main_screen()
+                return downloaded_files
+
+            self.logger.info("Clicking Export button...")
+            self.browser_wrapper.click_element(export_button_xpath)
             time.sleep(2)
 
-            # 4. Click en csv option
-            csv_option_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/form/div[1]/div/div/fieldset/label[2]"
-            self.logger.info("Selecting CSV option...")
-            self.browser_wrapper.click_element(csv_option_xpath)
-            time.sleep(1)
+            # 6. Seleccionar CSV en el modal
+            csv_option_xpath = '//*[@id="radCsvLabel"]'
+            if self.browser_wrapper.is_element_visible(csv_option_xpath, timeout=5000):
+                self.logger.info("Selecting CSV option...")
+                self.browser_wrapper.click_element(csv_option_xpath)
+                time.sleep(1)
+            else:
+                self.logger.warning("CSV option not found in modal")
+                self._close_export_modal_if_open()
+                self._go_back_to_reports()
+                self._reset_to_main_screen()
+                return downloaded_files
 
-            # 5. Click en OK button y esperar descarga
-            ok_button_xpath = "/html/body/div[1]/div[1]/div/div/div[3]/button[1]"
-            self.logger.info("Clicking OK...")
+            # 7. Click en OK y esperar descarga
+            ok_button_xpath = '//*[@id="hrefOK"]'
+            self.logger.info("Clicking OK to download...")
 
             file_path = self.browser_wrapper.expect_download_and_click(
-                ok_button_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                ok_button_xpath, timeout=120000, downloads_dir=self.job_downloads_dir
             )
 
             if file_path:
@@ -152,19 +180,157 @@ class ATTDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             else:
                 self.logger.error("Could not download daily usage file")
 
-            # 6. Reset a pantalla principal
+            # 8. Reset a pantalla principal
             self._reset_to_main_screen()
 
             self.logger.info(f"Daily usage download completed: {len(downloaded_files)} file(s)")
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error downloading daily usage files: {str(e)}")
+            self.logger.error(f"Error downloading daily usage files: {str(e)}\n{traceback.format_exc()}")
             try:
                 self._reset_to_main_screen()
             except:
                 pass
             return downloaded_files
+
+    def _configure_account_filter(self, billing_cycle: BillingCycle):
+        """Configura el filtro de cuenta basado en el billing cycle."""
+        try:
+            account_number = billing_cycle.account.number
+            self.logger.info(f"Configuring account filter for: {account_number}")
+
+            # 1. Click en View by dropdown
+            view_by_xpath = "//*[@id='main-content']/div[1]/div[2]/div[2]/div[1]/div[1]"
+            self.logger.info("Clicking View by dropdown...")
+            self.browser_wrapper.click_element(view_by_xpath)
+            time.sleep(2)
+
+            # 2. Seleccionar opción "Accounts"
+            accounts_option_xpath = "//*[@id='LevelDataDropdownList_multipleaccounts']"
+            self.logger.info("Selecting Accounts option...")
+            self.browser_wrapper.click_element(accounts_option_xpath)
+            time.sleep(2)
+
+            # 3. Escribir número de cuenta en el input
+            account_input_xpath = "//*[@id='scopeExpandedAccountMenu']/div[1]/div/div[2]/input"
+            self.logger.info(f"Entering account number: {account_number}")
+            self.browser_wrapper.clear_and_type(account_input_xpath, account_number)
+            time.sleep(3)
+
+            # 4. Seleccionar la primera opción del listado
+            first_option_xpath = "//*[@id='scopeExpandedAccountMenu']/div[3]/ul/li[1]"
+            if self.browser_wrapper.is_element_visible(first_option_xpath, timeout=5000):
+                self.logger.info("Selecting first account option...")
+                checkbox_xpath = f"{first_option_xpath}/input"
+                if self.browser_wrapper.is_element_visible(checkbox_xpath, timeout=2000):
+                    self.browser_wrapper.click_element(checkbox_xpath)
+                else:
+                    self.browser_wrapper.click_element(first_option_xpath)
+                time.sleep(1)
+            else:
+                self.logger.warning("Account option not found in list")
+
+            # 5. Click en OK button
+            ok_button_xpath = "//*[@id='scopeExpandedAccountMenu']/div[4]/button"
+            self.logger.info("Clicking OK button...")
+            self.browser_wrapper.click_element(ok_button_xpath)
+            time.sleep(3)
+
+            self.logger.info("Account filter configured successfully")
+
+        except Exception as e:
+            self.logger.error(f"Error configuring account filter: {str(e)}\n{traceback.format_exc()}")
+
+    def _find_and_click_report(self, section_name: str, report_names: List[str]) -> bool:
+        """Busca y hace click en un reporte dentro del accordion.
+
+        Idéntico al método del monthly scraper.
+        """
+        try:
+            accordion_xpath = "//*[@id='accordion']"
+
+            if not self.browser_wrapper.is_element_visible(accordion_xpath, timeout=10000):
+                self.logger.error("Accordion not found")
+                return False
+
+            page = self.browser_wrapper.page
+
+            # Buscar todos los paneles del accordion
+            panels = page.query_selector_all(f"xpath={accordion_xpath}//div[contains(@class, 'panel-reports')]")
+
+            for panel in panels:
+                try:
+                    panel_title_element = panel.query_selector(".panel-title span")
+                    if panel_title_element:
+                        panel_title = panel_title_element.inner_text().strip()
+
+                        if section_name.lower() in panel_title.lower():
+                            self.logger.info(f"Found section: {panel_title}")
+
+                            # Buscar los reportes dentro de este panel
+                            report_buttons = panel.query_selector_all("button[name='ViewReport']")
+
+                            for button in report_buttons:
+                                button_text = button.inner_text().strip()
+
+                                for report_name in report_names:
+                                    if report_name.lower() in button_text.lower():
+                                        self.logger.info(f"Found report: {button_text}")
+                                        button.click()
+                                        time.sleep(3)
+                                        return True
+
+                except Exception as inner_e:
+                    self.logger.debug(f"Error checking panel: {str(inner_e)}")
+                    continue
+
+            self.logger.warning(f"Report not found in section '{section_name}' with names: {report_names}")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Error finding report: {str(e)}\n{traceback.format_exc()}")
+            return False
+
+    def _go_back_to_reports(self):
+        """Regresa a la sección de reportes."""
+        try:
+            self._close_export_modal_if_open()
+
+            back_button_xpath = "//*[@id='thisForm']/div[1]/div[1]/a"
+            self.logger.info("Going back to reports section...")
+
+            if self.browser_wrapper.is_element_visible(back_button_xpath, timeout=5000):
+                self.browser_wrapper.click_element(back_button_xpath)
+                time.sleep(5)
+                self.logger.info("Back to reports section")
+            else:
+                self.logger.warning("Back button not found")
+
+        except Exception as e:
+            self.logger.error(f"Error going back to reports: {str(e)}")
+
+    def _close_export_modal_if_open(self):
+        """Cierra el modal de export si está abierto."""
+        try:
+            close_button_xpath = "//*[@id='exportModal']//button[@class='close']"
+            cancel_button_xpath = "//*[@id='exportModal']//button[contains(text(), 'Cancel')]"
+
+            if self.browser_wrapper.is_element_visible(close_button_xpath, timeout=2000):
+                self.logger.info("Closing export modal via close button...")
+                self.browser_wrapper.click_element(close_button_xpath)
+                time.sleep(1)
+            elif self.browser_wrapper.is_element_visible(cancel_button_xpath, timeout=2000):
+                self.logger.info("Closing export modal via cancel button...")
+                self.browser_wrapper.click_element(cancel_button_xpath)
+                time.sleep(1)
+            else:
+                self.logger.info("Attempting to close modal with Escape key...")
+                self.browser_wrapper.page.keyboard.press("Escape")
+                time.sleep(1)
+
+        except Exception as e:
+            self.logger.debug(f"Error closing export modal: {str(e)}")
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de AT&T."""

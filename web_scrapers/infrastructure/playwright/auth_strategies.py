@@ -249,34 +249,31 @@ class TelusAuthStrategy(AuthBaseStrategy):
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
 
-            my_telus_button_xpath = (
-                "/html[1]/body[1]/div[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[1]/button[1]/span[1]/span[1]"
-            )
+            # Handle potential blocking popup with skip button
+            self._try_skip_popup()
+
+            my_telus_button_xpath = ('//*[@id="ge-top-nav"]/ul[2]/li[3]/button')
             print("Clicking My Telus...")
             self.browser_wrapper.click_element(my_telus_button_xpath)
             time.sleep(2)
 
-            my_telus_web_button_xpath = "/html[1]/body[1]/div[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[1]/nav[1]/div[1]/ul[1]/li[1]/a[1]"
+            my_telus_web_button_xpath = '//*[@id="ge-top-nav"]/ul[2]/li[3]/nav/div/ul/li[1]/a'
             print("Clicking My Telus Web...")
             self.browser_wrapper.click_element(my_telus_web_button_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
 
-            email_field_xpath = (
-                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/form[1]/div[1]/div[1]/div[3]/input[1]"
-            )
+            email_field_xpath = '//*[@id="idtoken1"]'
             print(f"Entering email: {credentials.username}")
             self.browser_wrapper.clear_and_type(email_field_xpath, credentials.username)
             time.sleep(1)
 
-            password_field_xpath = (
-                "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/form[1]/div[2]/div[3]/input[1]"
-            )
+            password_field_xpath = '//*[@id="idtoken2"]'
             print("Entering password...")
             self.browser_wrapper.clear_and_type(password_field_xpath, credentials.password)
             time.sleep(1)
 
-            login_button_xpath = "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/form[1]/div[4]/div[1]"
+            login_button_xpath = '//*[@id="login-btn"]'
             print("Clicking Login...")
             self.browser_wrapper.click_element(login_button_xpath)
             self.browser_wrapper.wait_for_page_load()
@@ -336,6 +333,20 @@ class TelusAuthStrategy(AuthBaseStrategy):
 
     def get_login_button_xpath(self) -> str:
         return "/html[1]/body[1]/div[1]/div[1]/div[1]/div[1]/div[1]/div[1]/form[1]/div[4]/div[1]"
+
+    def _try_skip_popup(self) -> None:
+        """Try to dismiss a blocking popup by clicking the skip button if present."""
+        skip_button_xpath = "//*[@id='skip-button']"
+        try:
+            if self.browser_wrapper.is_element_visible(skip_button_xpath, timeout=3000):
+                print("Blocking popup detected, clicking skip button...")
+                self.browser_wrapper.click_element(skip_button_xpath)
+                time.sleep(1)
+                print("Popup dismissed")
+            else:
+                print("No blocking popup detected, continuing...")
+        except Exception as e:
+            print(f"Error handling popup (non-critical): {str(e)}")
 
     # TODO: Implementar _handle_2fa_if_present si Telus requiere 2FA
     # Pasos pendientes:
