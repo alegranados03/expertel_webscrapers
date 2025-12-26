@@ -66,18 +66,11 @@ class BellFileSlug(str, Enum):
     USAGE_OVERVIEW = "usage_overview"
 
 
+
 class TelusFileSlug(str, Enum):
-    AIRTIME_DETAIL = "airtime_detail"
     INDIVIDUAL_DETAIL = "individual_detail"
     MOBILITY_DEVICE = "mobility_device"
-    WIRELESS_VOICE = "wireless_voice"
-    WIRELESS_DATA = "wireless_data"
-    WIRELESS_SUBSCRIBER_CHARGES = "wireless_subscriber_charges"
-    WIRELESS_SUBSCRIBER_USAGE = "wireless_subscriber_usage"
     GROUP_SUMMARY = "group_summary"
-    SUMMARY_OF_RENEWAL = "summary_of_renewal"
-    INVOICE_DETAIL = "invoice_detail"
-
 
 class VerizonFileSlug(str, Enum):
     ACCOUNT_AND_WIRELESS = "account_wireless"

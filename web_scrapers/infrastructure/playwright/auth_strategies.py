@@ -239,6 +239,7 @@ class TelusAuthStrategy(AuthBaseStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def login(self, credentials: Credentials) -> bool:
         try:
@@ -276,7 +277,6 @@ class TelusAuthStrategy(AuthBaseStrategy):
             login_button_xpath = '//*[@id="login-btn"]'
             print("Clicking Login...")
             self.browser_wrapper.click_element(login_button_xpath)
-            self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
             if self.is_logged_in():
@@ -294,18 +294,17 @@ class TelusAuthStrategy(AuthBaseStrategy):
         try:
             print("Starting logout in Telus...")
             self.browser_wrapper.goto("https://www.telus.com/my-telus")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)
 
-            avatar_menu_xpath = "/html[1]/body[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[3]/button[1]"
+            avatar_menu_xpath = '//*[@id="ge-top-nav"]/ul[2]/li[3]/button'
             print("Clicking avatar menu...")
             self.browser_wrapper.click_element(avatar_menu_xpath)
             time.sleep(2)
 
-            logout_button_xpath = (
-                "/html[1]/body[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[3]/nav[1]/div[1]/ul[1]/li[5]/a[1]"
-            )
+            logout_button_xpath = '//*[@id="ge-top-nav"]/ul[2]/li[3]/nav/div/ul/li[5]/a'
             print("Clicking Logout...")
             self.browser_wrapper.click_element(logout_button_xpath)
-            self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
 
             print("Logout successful in Telus")
@@ -316,8 +315,73 @@ class TelusAuthStrategy(AuthBaseStrategy):
             return False
 
     def is_logged_in(self) -> bool:
-        avatar_menu_xpath = "/html[1]/body[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[3]/button[1]"
-        return self.browser_wrapper.is_element_visible(avatar_menu_xpath, timeout=10000)
+        """Verifica si el usuario esta logueado en Telus usando multiples metodos."""
+        try:
+            current_url = self.browser_wrapper.get_current_url()
+            self.logger.info(f"Verificando login en URL: {current_url}")
+
+            # Metodo 1: Verificar si estamos en my-telus (indica login exitoso)
+            if "my-telus" in current_url:
+                self.logger.info("URL contiene 'my-telus' - probablemente logueado")
+
+                # Verificar elementos que solo aparecen cuando esta logueado
+                logged_in_indicators = [
+                    # Avatar menu button (multiples variantes)
+                    "/html[1]/body[1]/header[1]/div[1]/div[2]/div[1]/nav[1]/ul[2]/li[3]/button[1]",
+                    "//button[contains(@class, 'avatar') or contains(@aria-label, 'account')]",
+                    "//nav//button[contains(@class, 'user') or contains(@class, 'profile')]",
+                    # Elementos del dashboard de my-telus
+                    "//div[contains(@class, 'account-overview')]",
+                    "//*[@id='__next']//div[contains(@class, 'dashboard')]",
+                    # Cualquier elemento que indique balance o cuenta
+                    "//*[contains(text(), 'Your balance') or contains(text(), 'Account')]",
+                ]
+
+                for xpath in logged_in_indicators:
+                    try:
+                        if self.browser_wrapper.is_element_visible(xpath, timeout=3000):
+                            self.logger.info(f"Login confirmado con elemento: {xpath[:50]}...")
+                            return True
+                    except Exception:
+                        continue
+
+                # Si estamos en my-telus pero no encontramos indicadores, asumir logueado
+                self.logger.info("En my-telus sin indicadores visibles, asumiendo logueado")
+                return True
+
+            # Metodo 2: Verificar si estamos en pagina de login (indica NO logueado)
+            login_page_indicators = [
+                "//input[@id='idtoken1']",  # Campo de email en login
+                "//input[@id='idtoken2']",  # Campo de password en login
+                "//*[@id='login-btn']",  # Boton de login
+            ]
+
+            for xpath in login_page_indicators:
+                try:
+                    if self.browser_wrapper.is_element_visible(xpath, timeout=2000):
+                        self.logger.info(f"Pagina de login detectada con: {xpath}")
+                        return False
+                except Exception:
+                    continue
+
+            # Metodo 3: Navegar a my-telus para verificar
+            self.logger.info("Navegando a my-telus para verificar estado de login...")
+            self.browser_wrapper.goto("https://www.telus.com/my-telus")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)
+
+            # Verificar URL despues de navegar
+            new_url = self.browser_wrapper.get_current_url()
+            if "my-telus" in new_url and "login" not in new_url.lower():
+                self.logger.info("Navegacion exitosa a my-telus - usuario logueado")
+                return True
+
+            self.logger.info("No se pudo confirmar login")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Error verificando estado de login: {str(e)}")
+            return False
 
     def get_login_url(self) -> str:
         return CarrierPortalUrls.TELUS.value

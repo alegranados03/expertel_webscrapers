@@ -5,7 +5,7 @@ ScraperJobService - Service for managing ScraperJobs with available_at support
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from django.db.models import Q
+from django.db.models import Case, Q, Value, When
 from django.utils import timezone
 
 from web_scrapers.domain.entities.models import (
@@ -80,9 +80,20 @@ class ScraperJobService:
         else:
             query_filter &= Q(available_at__lte=current_time)
 
-        # Order by credential and account to maximize session reuse and reduce login/logout cycles
-        django_jobs = DjangoScraperJob.objects.filter(query_filter).order_by(
-            "scraper_config__credential_id", "scraper_config__account_id", "available_at"
+        # Custom ordering for scraper type: monthly_reports -> daily_usage -> pdf_invoice
+        type_order = Case(
+            When(type="monthly_reports", then=Value(1)),
+            When(type="daily_usage", then=Value(2)),
+            When(type="pdf_invoice", then=Value(3)),
+            default=Value(99),
+        )
+
+        # Order by credential, account, type (custom order), and available_at
+        # to maximize session reuse and run scrapers in optimal sequence
+        django_jobs = DjangoScraperJob.objects.filter(query_filter).annotate(
+            type_order=type_order
+        ).order_by(
+            "scraper_config__credential_id", "scraper_config__account_id", "type_order", "available_at"
         )
 
         # Convert Django models to Pydantic entities using repositories
