@@ -48,7 +48,9 @@ class BellEnterpriseAuthStrategy(AuthBaseStrategy):
 
     def logout(self) -> bool:
         try:
-            logout_xpath = "#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(2) > li:nth-child(4) > a"
+            logout_xpath = (
+                "#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(2) > li:nth-child(4) > a"
+            )
             self.browser_wrapper.click_element(logout_xpath, selector_type="css")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
@@ -253,7 +255,7 @@ class TelusAuthStrategy(AuthBaseStrategy):
             # Handle potential blocking popup with skip button
             self._try_skip_popup()
 
-            my_telus_button_xpath = ('//*[@id="ge-top-nav"]/ul[2]/li[3]/button')
+            my_telus_button_xpath = '//*[@id="ge-top-nav"]/ul[2]/li[3]/button'
             print("Clicking My Telus...")
             self.browser_wrapper.click_element(my_telus_button_xpath)
             time.sleep(2)
@@ -868,9 +870,7 @@ class VerizonAuthStrategy(AuthBaseStrategy):
     def _process_2fa(self, credentials: Credentials) -> bool:
         text_option_xpath = "/html/body/v-app/div/div/div/div[2]/div/div/div/div/div[2]/li/div[1]/div"
         code_input_xpath = "/html/body/v-app/div/div/div/div/div[2]/div[1]/div/div/div/div[2]/form/div[2]/input"
-        continue_button_xpath = (
-            "/html/body/v-app/div/div/div/div/div[2]/div[1]/div/div/div/div[2]/form/div[3]/button"
-        )
+        continue_button_xpath = "/html/body/v-app/div/div/div/div/div[2]/div[1]/div/div/div/div[2]/form/div[3]/button"
 
         print("Selecting text message option...")
         self.browser_wrapper.click_element(text_option_xpath)

@@ -66,11 +66,11 @@ class BellFileSlug(str, Enum):
     USAGE_OVERVIEW = "usage_overview"
 
 
-
 class TelusFileSlug(str, Enum):
     INDIVIDUAL_DETAIL = "individual_detail"
     MOBILITY_DEVICE = "mobility_device"
     GROUP_SUMMARY = "group_summary"
+
 
 class VerizonFileSlug(str, Enum):
     ACCOUNT_AND_WIRELESS = "account_wireless"

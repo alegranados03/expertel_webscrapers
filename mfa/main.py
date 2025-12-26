@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from mfa.infrastructure.routes import router as mfa_router
 
 app = FastAPI(title="MFA Authenticator")

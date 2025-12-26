@@ -90,10 +90,10 @@ class ScraperJobService:
 
         # Order by credential, account, type (custom order), and available_at
         # to maximize session reuse and run scrapers in optimal sequence
-        django_jobs = DjangoScraperJob.objects.filter(query_filter).annotate(
-            type_order=type_order
-        ).order_by(
-            "scraper_config__credential_id", "scraper_config__account_id", "type_order", "available_at"
+        django_jobs = (
+            DjangoScraperJob.objects.filter(query_filter)
+            .annotate(type_order=type_order)
+            .order_by("scraper_config__credential_id", "scraper_config__account_id", "type_order", "available_at")
         )
 
         # Convert Django models to Pydantic entities using repositories

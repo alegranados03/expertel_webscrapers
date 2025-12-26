@@ -36,12 +36,16 @@ class BrowserWrapper(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def select_dropdown_option(self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+    def select_dropdown_option(
+        self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath"
+    ) -> None:
         """Selecciona una opción por texto."""
         raise NotImplementedError()
 
     @abstractmethod
-    def select_dropdown_by_value(self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+    def select_dropdown_by_value(
+        self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath"
+    ) -> None:
         """Selecciona una opción por valor."""
         raise NotImplementedError()
 

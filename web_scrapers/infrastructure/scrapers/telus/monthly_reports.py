@@ -184,7 +184,9 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info(f"Searching for account: {target_account_number}")
 
             # Search for div containing specific account number
-            account_number_xpath = f"//div[@data-testid='account-card-north-star']//div[contains(text(), '{target_account_number}')]"
+            account_number_xpath = (
+                f"//div[@data-testid='account-card-north-star']//div[contains(text(), '{target_account_number}')]"
+            )
 
             if self.browser_wrapper.find_element_by_xpath(account_number_xpath):
                 self.logger.info(f"Account {target_account_number} found, clicking...")
@@ -230,7 +232,9 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 return True
 
             # Account doesn't match, need to change it
-            self.logger.info(f"Incorrect account detected. Expected: {target_account_number}, Actual: {account_header_text}")
+            self.logger.info(
+                f"Incorrect account detected. Expected: {target_account_number}, Actual: {account_header_text}"
+            )
             self.logger.info("Clicking 'Change' to switch account...")
 
             # Find and click 'Change' link
@@ -299,7 +303,7 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     files_in_dir = os.listdir(self.job_downloads_dir)
                     self.logger.info(f"Files in download directory: {files_in_dir}")
                     # Search for ZIP files
-                    zip_files = [f for f in files_in_dir if f.endswith('.zip')]
+                    zip_files = [f for f in files_in_dir if f.endswith(".zip")]
                     if zip_files:
                         zip_file_path = os.path.join(self.job_downloads_dir, zip_files[0])
                         self.logger.info(f"ZIP found manually: {zip_file_path}")
@@ -768,7 +772,9 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 downloaded_files.append(file_info)
 
                 if corresponding_bcf:
-                    self.logger.info(f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
+                    self.logger.info(
+                        f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}"
+                    )
             else:
                 self.logger.error("Could not download Mobility Device report")
 

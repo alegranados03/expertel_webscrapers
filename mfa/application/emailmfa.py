@@ -149,8 +149,7 @@ def main():
 
     now_utc = datetime.now(timezone.utc)
     messages = checker.get_messages(
-        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10,
-         from_email="noreply@bell.ca"
+        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10, from_email="noreply@bell.ca"
     )
 
     if messages:

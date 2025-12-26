@@ -408,7 +408,9 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"Error downloading report {slug}: {str(e)}\n{traceback.format_exc()}")
             try:
                 self._go_back_to_reports()
-                self._ensure_filters_configured(billing_cycle, needs_date_filter=report_config.get("needs_date_filter", True))
+                self._ensure_filters_configured(
+                    billing_cycle, needs_date_filter=report_config.get("needs_date_filter", True)
+                )
             except:
                 pass
             return None
@@ -654,7 +656,9 @@ class ATTMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
         """Busca la sección de archivos con reintento automático en caso de error."""
         for attempt in range(max_retries + 1):
             try:
-                self.logger.info(f"[LEGACY] Searching for AT&T files section (attempt {attempt + 1}/{max_retries + 1})")
+                self.logger.info(
+                    f"[LEGACY] Searching for AT&T files section (attempt {attempt + 1}/{max_retries + 1})"
+                )
 
                 # 1. Click en billing header y esperar 2 minutos
                 billing_header_xpath = "/html/body/div[1]/div/ul/li[3]/a"
@@ -753,7 +757,9 @@ class ATTMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
 
             charges_reports = [slug for slug, cfg in slug_to_report_config.items() if cfg["tab"] == "charges"]
             for slug in charges_reports:
-                self._download_single_report(slug, slug_to_report_config[slug], billing_cycle_file_map, downloaded_files)
+                self._download_single_report(
+                    slug, slug_to_report_config[slug], billing_cycle_file_map, downloaded_files
+                )
 
             self.logger.info("[LEGACY] Switching to Unbilled Usage tab...")
             unbilled_tab_xpath = "/html/body/div[1]/main/div[2]/form/div/div[1]/ul/li[3]/a"
@@ -762,7 +768,9 @@ class ATTMonthlyReportsScraperStrategyLegacy(MonthlyReportsScraperStrategy):
 
             unbilled_reports = [slug for slug, cfg in slug_to_report_config.items() if cfg["tab"] == "unbilled"]
             for slug in unbilled_reports:
-                self._download_single_report(slug, slug_to_report_config[slug], billing_cycle_file_map, downloaded_files)
+                self._download_single_report(
+                    slug, slug_to_report_config[slug], billing_cycle_file_map, downloaded_files
+                )
 
             self._reset_to_main_screen()
 

@@ -13,8 +13,8 @@ class PlaywrightWrapper(BrowserWrapper):
 
     def _resolve_selector(self, selector: str, selector_type: str = "xpath") -> str:
         strategies = {
-            "xpath":  lambda s: f"xpath={s}",
-            "css":    lambda s: s,
+            "xpath": lambda s: f"xpath={s}",
+            "css": lambda s: s,
             "pierce": lambda s: f"pierce={s}",
         }
 
@@ -22,7 +22,6 @@ class PlaywrightWrapper(BrowserWrapper):
             return strategies[selector_type](selector)
         except KeyError:
             raise ValueError(f"selector_type inválido: {selector_type}")
-
 
     def goto(self, url: str, wait_until: str = "load") -> None:
         self.page.goto(url, wait_until=wait_until)
@@ -56,12 +55,16 @@ class PlaywrightWrapper(BrowserWrapper):
         locator = self.page.locator(resolved)
         locator.fill(text)
 
-    def select_dropdown_option(self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+    def select_dropdown_option(
+        self, selector: str, option_text: str, timeout: int = 10000, selector_type: str = "xpath"
+    ) -> None:
         resolved = self._resolve_selector(selector, selector_type)
         self.page.wait_for_selector(resolved, timeout=timeout)
         self.page.select_option(resolved, label=option_text)
 
-    def select_dropdown_by_value(self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath") -> None:
+    def select_dropdown_by_value(
+        self, selector: str, value: str, timeout: int = 10000, selector_type: str = "xpath"
+    ) -> None:
         resolved = self._resolve_selector(selector, selector_type)
         self.page.wait_for_selector(resolved, timeout=timeout)
         self.page.select_option(resolved, value=value)
@@ -178,18 +181,22 @@ class PlaywrightWrapper(BrowserWrapper):
     def get_tab_count(self) -> int:
         return len(self.page.context.pages)
 
-    def clear_browser_data(self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True) -> None:
+    def clear_browser_data(
+        self, clear_cookies: bool = True, clear_storage: bool = True, clear_cache: bool = True
+    ) -> None:
         try:
             context = self.page.context
             if clear_cookies:
                 context.clear_cookies()
             if clear_storage or clear_cache:
-                self.page.evaluate("""
+                self.page.evaluate(
+                    """
                     () => {
                         if (localStorage) localStorage.clear();
                         if (sessionStorage) sessionStorage.clear();
                     }
-                """)
+                """
+                )
         except Exception as e:
             print(f"⚠️ Error al limpiar datos: {e}")
 

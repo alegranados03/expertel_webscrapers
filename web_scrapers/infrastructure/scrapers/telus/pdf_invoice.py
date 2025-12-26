@@ -140,7 +140,9 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             # 4. Select account from results list
             # List is at: //*[@id="scopeExpandedAccountMenu"]/div[3]/ul
             # The li contains the account number
-            account_list_item_xpath = f'//*[@id="scopeExpandedAccountMenu"]/div[3]/ul//li[contains(., "{target_account}")]'
+            account_list_item_xpath = (
+                f'//*[@id="scopeExpandedAccountMenu"]/div[3]/ul//li[contains(., "{target_account}")]'
+            )
 
             if self.browser_wrapper.find_element_by_xpath(account_list_item_xpath, timeout=5000):
                 self.logger.info(f"Account {target_account} found in list, selecting...")
@@ -171,9 +173,18 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
             # Month number to English name mapping
             month_names = {
-                1: "January", 2: "February", 3: "March", 4: "April",
-                5: "May", 6: "June", 7: "July", 8: "August",
-                9: "September", 10: "October", 11: "November", 12: "December"
+                1: "January",
+                2: "February",
+                3: "March",
+                4: "April",
+                5: "May",
+                6: "June",
+                7: "July",
+                8: "August",
+                9: "September",
+                10: "October",
+                11: "November",
+                12: "December",
             }
             month_name = month_names[target_month]
 
@@ -233,7 +244,9 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
             # 2. Search for "PDF Bill" button in correct account row
             # Button has aria-label containing account number
-            pdf_button_xpath = f"//button[contains(@aria-label, 'PDF Bill')][contains(@aria-label, '{target_account}')]"
+            pdf_button_xpath = (
+                f"//button[contains(@aria-label, 'PDF Bill')][contains(@aria-label, '{target_account}')]"
+            )
 
             # Alternative: search in first row
             pdf_button_alt_xpath = "//tbody/tr[1]//button[contains(@aria-label, 'PDF Bill')]"

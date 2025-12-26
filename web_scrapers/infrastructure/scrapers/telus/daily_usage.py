@@ -171,9 +171,7 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
             if self.browser_wrapper.find_element_by_xpath(account_number_xpath, timeout=5000):
                 self.logger.info(f"Account {target_account_number} found, clicking...")
-                target_card_xpath = (
-                    f"//div[@data-testid='account-card-north-star'][.//div[contains(text(), '{target_account_number}')]]"
-                )
+                target_card_xpath = f"//div[@data-testid='account-card-north-star'][.//div[contains(text(), '{target_account_number}')]]"
                 self.browser_wrapper.click_element(target_card_xpath)
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
@@ -235,7 +233,9 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             self.logger.info("Extracting pool data...")
 
             # XPath of div containing usage data
-            usage_container_xpath = '//*[@id="app"]/div[2]/div/div/div/div[3]/div[7]/div/div[2]/div/div[3]/div/div/div[5]'
+            usage_container_xpath = (
+                '//*[@id="app"]/div[2]/div/div/div/div[3]/div[7]/div/div[2]/div/div[3]/div/div/div[5]'
+            )
 
             if not self.browser_wrapper.find_element_by_xpath(usage_container_xpath, timeout=5000):
                 self.logger.warning("Usage container not found")
@@ -291,7 +291,7 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             value = float(match.group(1))
 
             # Convert GB to bytes (1 GB = 1024^3 bytes)
-            bytes_value = int(value * (1024 ** 3))
+            bytes_value = int(value * (1024**3))
             return bytes_value
 
         except Exception as e:
@@ -302,9 +302,7 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
         """Detects and closes Bill Analyzer modal if it appears."""
         try:
             # Search for "don't show again" button in Bill Analyzer modal
-            dont_show_again_xpath = (
-                "/html/body/div[1]/html/body/div/div/div/div[2]/div/div[2]/div[2]/div[1]/div/div/div[3]/div/div[2]/p/div/a"
-            )
+            dont_show_again_xpath = "/html/body/div[1]/html/body/div/div/div/div[2]/div/div[2]/div[2]/div[1]/div/div/div[3]/div/div[2]/p/div/a"
 
             if self.browser_wrapper.find_element_by_xpath(dont_show_again_xpath, timeout=5000):
                 self.logger.info("Bill Analyzer modal detected, closing...")
@@ -492,7 +490,9 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 report_row = self._find_best_report_row(report_name, target_account)
 
                 if not report_row:
-                    self.logger.info(f"Report '{report_name}' with BAN '{target_account}' not found, waiting 3 more minutes...")
+                    self.logger.info(
+                        f"Report '{report_name}' with BAN '{target_account}' not found, waiting 3 more minutes..."
+                    )
                     time.sleep(180)
                     continue
 

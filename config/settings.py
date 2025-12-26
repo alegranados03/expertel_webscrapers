@@ -12,9 +12,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from datetime import timedelta
+from pathlib import Path
+
 from corsheaders.defaults import default_headers
 from dotenv import find_dotenv, load_dotenv
-from pathlib import Path
 
 ENV_FILE = find_dotenv()
 if ENV_FILE:

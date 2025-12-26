@@ -227,20 +227,15 @@ class ScraperBaseStrategy(ABC):
                 # Verify file exists and has a physical path
                 if not file_info.file_path or not os.path.exists(file_info.file_path):
                     self.logger.warning(f"File not found on disk: {file_info.file_name}")
-                    failed_files.append({
-                        'file': file_info,
-                        'reason': 'File not found on disk',
-                        'file_path': file_info.file_path
-                    })
+                    failed_files.append(
+                        {"file": file_info, "reason": "File not found on disk", "file_path": file_info.file_path}
+                    )
                     continue
 
                 # Attempt to upload this single file
                 self.logger.info(f"Uploading: {file_info.file_name}")
                 success = upload_service.upload_files_batch(
-                    files=[file_info],
-                    billing_cycle=billing_cycle,
-                    upload_type=upload_type,
-                    additional_data=None
+                    files=[file_info], billing_cycle=billing_cycle, upload_type=upload_type, additional_data=None
                 )
 
                 if success:
@@ -248,32 +243,34 @@ class ScraperBaseStrategy(ABC):
                     uploaded_files.append(file_info)
                 else:
                     self.logger.error(f"Upload failed: {file_info.file_name}")
-                    failed_files.append({
-                        'file': file_info,
-                        'reason': 'Upload service returned failure',
-                        'file_path': file_info.file_path
-                    })
+                    failed_files.append(
+                        {
+                            "file": file_info,
+                            "reason": "Upload service returned failure",
+                            "file_path": file_info.file_path,
+                        }
+                    )
 
             except Exception as e:
                 self.logger.error(f"Exception uploading {file_info.file_name}: {str(e)}")
-                failed_files.append({
-                    'file': file_info,
-                    'reason': f'Exception: {str(e)}',
-                    'file_path': file_info.file_path
-                })
+                failed_files.append(
+                    {"file": file_info, "reason": f"Exception: {str(e)}", "file_path": file_info.file_path}
+                )
 
         # Build result summary
         result = {
-            'total_files': len(files),
-            'successful_uploads': len(uploaded_files),
-            'failed_uploads': len(failed_files),
-            'success': len(failed_files) == 0,  # Only success if ALL uploaded
-            'uploaded_files': uploaded_files,
-            'failed_files': failed_files
+            "total_files": len(files),
+            "successful_uploads": len(uploaded_files),
+            "failed_uploads": len(failed_files),
+            "success": len(failed_files) == 0,  # Only success if ALL uploaded
+            "uploaded_files": uploaded_files,
+            "failed_files": failed_files,
         }
 
         # Log summary
-        self.logger.info(f"Upload tracking complete: {result['successful_uploads']}/{result['total_files']} successful")
+        self.logger.info(
+            f"Upload tracking complete: {result['successful_uploads']}/{result['total_files']} successful"
+        )
 
         return result
 
@@ -316,7 +313,7 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
 
             # Step 4: Determine final success based on download and upload results
             download_failures = expected_files_count - downloaded_count
-            upload_failures = upload_tracking['failed_uploads']
+            upload_failures = upload_tracking["failed_uploads"]
             total_failures = download_failures + upload_failures
 
             # Build detailed result message
@@ -325,11 +322,7 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
                 message = f"SUCCESS: All {expected_files_count} files downloaded and uploaded"
                 self.logger.info(message)
                 self._cleanup_job_directory()
-                return ScraperResult(
-                    True,
-                    message,
-                    self._create_file_mapping(upload_tracking['uploaded_files'])
-                )
+                return ScraperResult(True, message, self._create_file_mapping(upload_tracking["uploaded_files"]))
             else:
                 # Partial or complete failure - keep folder for investigation
                 error_parts = []
@@ -340,10 +333,8 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
                 if upload_failures > 0:
                     error_parts.append(f"{upload_failures} file(s) failed to upload")
                     # Log details of failed uploads
-                    for failed in upload_tracking['failed_files']:
-                        self.logger.error(
-                            f"Upload failure: {failed['file'].file_name} - {failed['reason']}"
-                        )
+                    for failed in upload_tracking["failed_files"]:
+                        self.logger.error(f"Upload failure: {failed['file'].file_name} - {failed['reason']}")
 
                 error_message = f"ERROR: {', '.join(error_parts)}. "
                 error_message += f"Expected: {expected_files_count}, "
@@ -357,8 +348,8 @@ class MonthlyReportsScraperStrategy(ScraperBaseStrategy):
                 return ScraperResult(
                     False,
                     error_message,
-                    self._create_file_mapping(upload_tracking['uploaded_files']),
-                    error=error_message
+                    self._create_file_mapping(upload_tracking["uploaded_files"]),
+                    error=error_message,
                 )
 
         except Exception as e:

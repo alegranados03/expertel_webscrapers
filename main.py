@@ -2,20 +2,17 @@
 Main ScraperJob processor with available_at support
 """
 
+import logging
 import os
 import sys
-import logging
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
 
 # Configure logging BEFORE Django setup and imports
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('main.log', mode='a')
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("main.log", mode="a")],
 )
 
 import django
@@ -24,13 +21,13 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from web_scrapers.application.scraper_job_service import ScraperJobService
 from web_scrapers.application.safe_scraper_job_service import SafeScraperJobService
+from web_scrapers.application.scraper_job_service import ScraperJobService
 from web_scrapers.application.session_manager import SessionManager
 from web_scrapers.domain.entities.models import ScraperJobCompleteContext
 from web_scrapers.domain.entities.scraper_factory import ScraperStrategyFactory
 from web_scrapers.domain.entities.session import Carrier as CarrierEnum, Credentials
-from web_scrapers.domain.enums import ScraperJobStatus, Navigators, ScraperType
+from web_scrapers.domain.enums import Navigators, ScraperJobStatus, ScraperType
 from web_scrapers.infrastructure.logging_config import get_logger, setup_logging
 
 

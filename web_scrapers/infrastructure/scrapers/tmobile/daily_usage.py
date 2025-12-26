@@ -140,7 +140,9 @@ class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 downloaded_files.append(file_info)
 
                 if daily_usage_file:
-                    print(f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
+                    print(
+                        f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                    )
             else:
                 print("No se pudo descargar el archivo CSV")
 
@@ -259,8 +261,18 @@ class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
                     # Mapear nombres de meses
                     month_map = {
-                        "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
-                        "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+                        "Jan": 1,
+                        "Feb": 2,
+                        "Mar": 3,
+                        "Apr": 4,
+                        "May": 5,
+                        "Jun": 6,
+                        "Jul": 7,
+                        "Aug": 8,
+                        "Sep": 9,
+                        "Oct": 10,
+                        "Nov": 11,
+                        "Dec": 12,
                     }
 
                     if end_month in month_map:

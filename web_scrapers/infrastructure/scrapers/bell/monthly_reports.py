@@ -383,8 +383,8 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             if not already_in_service:
                 # Step 2a: Click on "My Reports"
                 my_reports_selectors = [
-                    '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button',
-                    '#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(2) > button'
+                    "#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(3) > button",
+                    "#ec-sidebar > div > div > div.ec-sidebar__container > ul:nth-child(1) > li:nth-child(2) > button",
                 ]
 
                 my_reports_button_clicked = False
@@ -402,7 +402,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                                 my_reports_button_clicked = True
                                 break
                             else:
-                                self.logger.warning(f"Selector matched but text doesn't contain 'My Reports': {button_text}")
+                                self.logger.warning(
+                                    f"Selector matched but text doesn't contain 'My Reports': {button_text}"
+                                )
                     except Exception as e:
                         self.logger.debug(f"Selector failed: {str(e)}, trying next selector...")
                         continue
@@ -413,7 +415,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 # Step 2b: Click on "Service" sub-menu
                 service_sub_selectors = [
                     "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(3) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)",
-                    "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(2) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)"
+                    "nav:nth-child(4) > div:nth-child(2) > div:nth-child(1) > div:nth-child(3) > ul:nth-child(1) > li:nth-child(2) > ul:nth-child(2) > li:nth-child(1) > a:nth-child(1) > span:nth-child(1)",
                 ]
 
                 service_sub_clicked = False
@@ -446,11 +448,13 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info("Waiting 30 seconds for reports interface to load...")
             time.sleep(30)
 
-            my_workspace_icon_xpath = '/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[3]'
+            my_workspace_icon_xpath = (
+                "/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[3]"
+            )
             self.browser_wrapper.click_element(my_workspace_icon_xpath)
             self.logger.info("Workspace icon accessed")
 
-            shared_with_me_xpath = '/html[1]/body[1]/div[2]/app-base[1]/section[1]/block-ui[1]/div[1]/div[1]/div[1]/app-workspace[1]/app-ana-page[1]/div[2]/div[1]/div[1]/div[1]/div[1]/app-ws-folder-tree[1]/div[1]/div[1]/p-tree[1]/div[1]/div[1]/ul[1]/p-treenode[2]/li[1]/div[1]/span[3]/span[1]/div[1]'
+            shared_with_me_xpath = "/html[1]/body[1]/div[2]/app-base[1]/section[1]/block-ui[1]/div[1]/div[1]/div[1]/app-workspace[1]/app-ana-page[1]/div[2]/div[1]/div[1]/div[1]/div[1]/app-ws-folder-tree[1]/div[1]/div[1]/p-tree[1]/div[1]/div[1]/ul[1]/p-treenode[2]/li[1]/div[1]/span[3]/span[1]/div[1]"
             self.browser_wrapper.click_element(shared_with_me_xpath)
             self.logger.info("Shared With me accessed")
 
@@ -528,7 +532,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.logger.info(f"Processing report: {report_config['name']}")
 
                 # Step 1: Click on the report grid by searching for it dynamically
-                self._click_report_by_name(report_config['name'])
+                self._click_report_by_name(report_config["name"])
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
                 self.logger.info(f"Report grid clicked for {report_config['name']}")
@@ -634,7 +638,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
                 # Search for the parent item div by aria-label (case-insensitive)
                 alt_report_xpath = f"{container_xpath}//div[@class and contains(@class, 'ws-grid__item') and contains(translate(@aria-label, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), translate('{report_name.lower()}', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'))]"
-                self.logger.debug(f"Alternative XPath: searching for parent container with aria-label (case-insensitive)")
+                self.logger.debug(
+                    f"Alternative XPath: searching for parent container with aria-label (case-insensitive)"
+                )
 
                 self.browser_wrapper.wait_for_element(alt_report_xpath, timeout=10000)
                 time.sleep(1)
@@ -685,12 +691,12 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return 1
 
         # Pattern: "X minutes ago"
-        minutes_match = re.search(r'(\d+)\s*minute', time_text)
+        minutes_match = re.search(r"(\d+)\s*minute", time_text)
         if minutes_match:
             return int(minutes_match.group(1))
 
         # Pattern: "X hours ago" or "an hour ago"
-        hours_match = re.search(r'(\d+)\s*hour', time_text)
+        hours_match = re.search(r"(\d+)\s*hour", time_text)
         if hours_match:
             return int(hours_match.group(1)) * 60
 
@@ -810,7 +816,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         self.logger.warning(f"No valid recent notification found for '{report_slug}'")
         return None
 
-    def _apply_report_filters(self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict) -> None:
+    def _apply_report_filters(
+        self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict
+    ) -> None:
         """Apply account and invoice month filters to the current report.
 
         Uses dynamic XPath selectors to handle DOM repositioning.
@@ -837,7 +845,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 if self.browser_wrapper.find_element_by_xpath(auto_apply_checkbox_xpath, timeout=3000):
                     auto_apply_enabled = self.browser_wrapper.page.is_checked(f"xpath={auto_apply_checkbox_xpath}")
                     if auto_apply_enabled:
-                        self.logger.info(f"'Auto apply' is enabled - filters will be applied automatically, skipping Apply button")
+                        self.logger.info(
+                            f"'Auto apply' is enabled - filters will be applied automatically, skipping Apply button"
+                        )
                     else:
                         self.logger.info(f"'Auto apply' is disabled - will click Apply Filters button")
             except Exception as e:
@@ -852,7 +862,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             else:
                 self.logger.info(f"Auto apply active - waiting for automatic filter application...")
 
-            time.sleep(30) # Wait 1 minute for filters to apply (either manually or automatically)
+            time.sleep(30)  # Wait 1 minute for filters to apply (either manually or automatically)
             self.logger.info(f"Filters applied successfully for {report_slug}")
 
         except Exception as e:
@@ -918,7 +928,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # Step 2: Encontrar y hacer click en el checkbox de la cuenta especifica
             # XPath para encontrar el li que contiene el numero de cuenta
-            account_li_xpath = f"//li[contains(@class, 'list-item multiselect-setting')][.//label[contains(., '{account_number}')]]"
+            account_li_xpath = (
+                f"//li[contains(@class, 'list-item multiselect-setting')][.//label[contains(., '{account_number}')]]"
+            )
 
             # Esperar a que el elemento sea visible
             self.browser_wrapper.wait_for_element(account_li_xpath, timeout=10000)
@@ -1019,7 +1031,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 # If it shows a single account number, it means there's only one account
                 # In that case, it's already selected and we don't need to do anything
                 if display_text == account_number:
-                    self.logger.info(f"Account '{account_number}' is already the only account selected. No action needed.")
+                    self.logger.info(
+                        f"Account '{account_number}' is already the only account selected. No action needed."
+                    )
                     return
             except Exception as e:
                 self.logger.debug(f"Could not read display text: {str(e)}, continuing with selection...")
@@ -1028,7 +1042,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # Check aria-expanded attribute to see if dropdown is open
             try:
                 # Use xpath locator with proper syntax
-                aria_expanded = self.browser_wrapper.page.locator(f"xpath={account_dropdown_xpath}").get_attribute("aria-expanded")
+                aria_expanded = self.browser_wrapper.page.locator(f"xpath={account_dropdown_xpath}").get_attribute(
+                    "aria-expanded"
+                )
                 if aria_expanded == "false":
                     self.logger.info("Opening dropdown...")
                     self.browser_wrapper.click_element(account_dropdown_xpath)
@@ -1086,7 +1102,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.logger.info(f"Account '{account_number}' selected successfully using alternative method")
             except Exception as e2:
                 self.logger.error(f"Alternative account selection method also failed: {str(e2)}")
-                raise Exception(f"Both account selection methods failed. Primary error: {str(e)}, Alternative error: {str(e2)}")
+                raise Exception(
+                    f"Both account selection methods failed. Primary error: {str(e)}, Alternative error: {str(e2)}"
+                )
 
     def _select_account_via_table_filter(self, account_number: str) -> None:
         """Alternative method: Select account using the table header filter menu.
@@ -1194,7 +1212,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         except Exception as e:
             self.logger.error(f"Error exporting report: {str(e)}")
 
-    def _wait_for_and_download_reports(self, generated_reports: List[str], billing_cycle_file_map: dict) -> List[FileDownloadInfo]:
+    def _wait_for_and_download_reports(
+        self, generated_reports: List[str], billing_cycle_file_map: dict
+    ) -> List[FileDownloadInfo]:
         """Wait for reports to appear in alerts/notifications and download them by matching text content.
 
         Uses intelligent notification matching by report name (second <b> tag) and timestamp validation.
@@ -1211,7 +1231,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         try:
             # Step 1: Click on the alerts icon
-            alerts_icon_xpath = "/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[6]"
+            alerts_icon_xpath = (
+                "/html/body/div[2]/app-base/section/block-ui/div/div/app-aside-left/div/div/div/ul/li[6]"
+            )
             self.logger.info("Clicking alerts/notifications icon...")
             self.browser_wrapper.click_element(alerts_icon_xpath)
             time.sleep(3)
@@ -1227,7 +1249,9 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # Step 3: Count available notifications
             notification_items = self.browser_wrapper.page.locator("//li[contains(@class, 'kt-notifi-li')]")
             total_notifications = notification_items.count()
-            self.logger.info(f"Generated reports: {len(generated_reports)}, Available notifications: {total_notifications}")
+            self.logger.info(
+                f"Generated reports: {len(generated_reports)}, Available notifications: {total_notifications}"
+            )
 
             # Step 4: Download each report by identifying it by text content (NOT position)
             for report_slug in generated_reports:
@@ -1303,9 +1327,7 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 if file_info.billing_cycle_file:
                     bcf = file_info.billing_cycle_file
                     slug = bcf.carrier_report.slug if hasattr(bcf, "carrier_report") and bcf.carrier_report else "N/A"
-                    self.logger.info(
-                        f"   [{idx}] {file_info.file_name} -> BCF ID {bcf.id} ('{slug}')"
-                    )
+                    self.logger.info(f"   [{idx}] {file_info.file_name} -> BCF ID {bcf.id} ('{slug}')")
                 else:
                     self.logger.info(f"   [{idx}] {file_info.file_name} -> NO MAPPING")
             self.logger.info(f"{'='*80}\n")

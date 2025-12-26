@@ -11,6 +11,7 @@ import logging
 from typing import Any, Callable, Optional
 
 from web_scrapers.domain.enums import ScraperJobStatus
+
 from .scraper_job_service import ScraperJobService
 
 
@@ -55,8 +56,7 @@ class SafeScraperJobService:
                 # We're in async context, run sync code in thread pool and wait for it
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(
-                        self.scraper_job_service.update_scraper_job_status,
-                        scraper_job_id, status, log_message
+                        self.scraper_job_service.update_scraper_job_status, scraper_job_id, status, log_message
                     )
                     # Wait for completion to ensure the update is saved before continuing
                     future.result()
@@ -67,10 +67,8 @@ class SafeScraperJobService:
             pass
 
         # Execute normally in sync context
-        self.scraper_job_service.update_scraper_job_status(
-            scraper_job_id, status, log_message
-        )
-    
+        self.scraper_job_service.update_scraper_job_status(scraper_job_id, status, log_message)
+
     def __getattr__(self, name: str) -> Any:
         """
         Delegate all other methods to the original service.
@@ -88,6 +86,7 @@ class SafeScraperJobService:
 
         # If it's a method, wrap it to handle async context
         if callable(attr):
+
             def wrapped_method(*args: Any, **kwargs: Any) -> Any:
                 try:
                     # Check if we're in an async context
