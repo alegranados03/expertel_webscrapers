@@ -15,12 +15,12 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
-    """Scraper de facturas PDF para Telus.
+    """PDF invoice scraper for Telus.
 
-    Este scraper:
-    1. Navega a Bill Analyzer via My Telus
-    2. Configura filtros de Scope (cuenta) y Month (mes)
-    3. Descarga el PDF de la factura correspondiente
+    This scraper:
+    1. Navigates to Bill Analyzer via My Telus
+    2. Configures Scope (account) and Month filters
+    3. Downloads the corresponding PDF invoice
     """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
@@ -28,148 +28,148 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de facturas PDF de Telus y configura filtros."""
+        """Navigates to PDF invoices section in Telus and configures filters."""
         try:
-            self.logger.info("=== INICIANDO TELUS PDF INVOICE SCRAPER ===")
+            self.logger.info("=== STARTING TELUS PDF INVOICE SCRAPER ===")
 
-            # 1. Verificar que estamos en My Telus
+            # 1. Verify we are in My Telus
             current_url = self.browser_wrapper.get_current_url()
             if "my-telus" not in current_url:
-                self.logger.info("Navegando a My Telus...")
+                self.logger.info("Navigating to My Telus...")
                 self.browser_wrapper.goto("https://www.telus.com/my-telus")
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(5)
 
-            # 2. Click en bill options dropdown
+            # 2. Click on bill options dropdown
             bill_options_xpath = (
                 "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
             )
-            self.logger.info("Click en bill options dropdown...")
+            self.logger.info("Clicking on bill options dropdown...")
             self.browser_wrapper.click_element(bill_options_xpath)
             time.sleep(2)
 
-            # 3. Click en "View bill" option
+            # 3. Click on "View bill" option
             view_bill_xpath = "//div[@class='generic_dropdownContainer__h39SV']//a[1]"
-            self.logger.info("Click en 'View bill' option...")
+            self.logger.info("Clicking on 'View bill' option...")
             self.browser_wrapper.click_element(view_bill_xpath)
-            self.logger.info("Esperando 30 segundos para cargar Bill Analyzer...")
+            self.logger.info("Waiting 30 seconds for Bill Analyzer to load...")
             time.sleep(30)
 
-            # 4. Manejar modal de Bill Analyzer si aparece
+            # 4. Handle Bill Analyzer modal if it appears
             self._dismiss_bill_analyzer_modal()
 
-            # 5. Click en Statements tab
+            # 5. Click on Statements tab
             statements_xpath = '//*[@id="navMenuItem14"]'
-            self.logger.info("Click en Statements tab...")
+            self.logger.info("Clicking on Statements tab...")
             self.browser_wrapper.click_element(statements_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
-            # 5. Configurar filtro de Scope (cuenta)
+            # 6. Configure Scope filter (account)
             if not self._configure_scope_filter(billing_cycle):
-                self.logger.error("Fallo al configurar filtro de Scope - abortando scraper")
+                self.logger.error("Scope filter configuration failed - aborting scraper")
                 return None
 
-            # 6. Configurar filtro de Month
+            # 7. Configure Month filter
             if not self._configure_month_filter(billing_cycle):
-                self.logger.error("Fallo al configurar filtro de Month - abortando scraper")
+                self.logger.error("Month filter configuration failed - aborting scraper")
                 return None
 
-            # 7. Click en Apply
+            # 8. Click on Apply
             apply_button_xpath = '//*[@id="btnViewList"]'
-            self.logger.info("Click en Apply button...")
+            self.logger.info("Clicking on Apply button...")
             self.browser_wrapper.click_element(apply_button_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(10)
 
-            self.logger.info("Navegacion a seccion de facturas PDF completada")
+            self.logger.info("Navigation to PDF invoices section completed")
             return {"section": "pdf_invoices", "ready_for_download": True}
 
         except Exception as e:
-            self.logger.error(f"Error navegando a facturas PDF: {str(e)}")
+            self.logger.error(f"Error navigating to PDF invoices: {str(e)}")
             return None
 
     def _dismiss_bill_analyzer_modal(self) -> bool:
         """
-        Detecta y cierra el modal de Bill Analyzer si aparece.
-        Este modal puede aparecer al navegar a la seccion de reportes.
-        Retorna True si se cerro el modal o si no aparecio.
+        Detects and closes Bill Analyzer modal if it appears.
+        This modal may appear when navigating to reports section.
+        Returns True if modal was closed or if it didn't appear.
         """
         try:
             modal_button_xpath = "//*[@id='tandc-content']/div[3]/button"
 
-            # Verificar si el modal esta presente (con timeout corto)
+            # Check if modal is present (with short timeout)
             if self.browser_wrapper.is_element_visible(modal_button_xpath, timeout=3000):
-                self.logger.info("Modal Bill Analyzer detectado, cerrando...")
+                self.logger.info("Bill Analyzer modal detected, closing...")
                 self.browser_wrapper.click_element(modal_button_xpath)
                 time.sleep(2)
-                self.logger.info("Modal Bill Analyzer cerrado")
+                self.logger.info("Bill Analyzer modal closed")
                 return True
             else:
-                self.logger.info("Modal Bill Analyzer no detectado, continuando...")
+                self.logger.info("Bill Analyzer modal not detected, continuing...")
                 return True
 
         except Exception as e:
-            self.logger.warning(f"Error manejando modal Bill Analyzer: {str(e)}")
-            return True  # Continuar de todos modos
+            self.logger.warning(f"Error handling Bill Analyzer modal: {str(e)}")
+            return True  # Continue anyway
 
     def _configure_scope_filter(self, billing_cycle: BillingCycle) -> bool:
-        """Configura el filtro de Scope para seleccionar la cuenta correcta."""
+        """Configures Scope filter to select the correct account."""
         try:
             target_account = billing_cycle.account.number
-            self.logger.info(f"Configurando Scope filter para cuenta: {target_account}")
+            self.logger.info(f"Configuring Scope filter for account: {target_account}")
 
-            # 1. Click en Scope dropdown button
+            # 1. Click on Scope dropdown button
             scope_dropdown_xpath = '//*[@id="LevelDataDropdownButton"]'
-            self.logger.info("Click en Scope dropdown...")
+            self.logger.info("Clicking on Scope dropdown...")
             self.browser_wrapper.click_element(scope_dropdown_xpath)
             time.sleep(2)
 
-            # 2. Click en "Accounts" option
+            # 2. Click on "Accounts" option
             accounts_option_xpath = '//*[@id="LevelDataDropdownList_multipleaccounts"]'
-            self.logger.info("Click en 'Accounts' option...")
+            self.logger.info("Clicking on 'Accounts' option...")
             self.browser_wrapper.click_element(accounts_option_xpath)
             time.sleep(3)
 
-            # 3. Escribir el numero de cuenta en el input de busqueda
+            # 3. Type account number in search input
             search_input_xpath = '//*[@id="scopeExpandedAccountMenu"]/div[1]/div/div[2]/input'
-            self.logger.info(f"Escribiendo numero de cuenta '{target_account}' en el input de busqueda...")
+            self.logger.info(f"Typing account number '{target_account}' in search input...")
             self.browser_wrapper.clear_and_type(search_input_xpath, target_account)
             time.sleep(2)
 
-            # 4. Seleccionar la cuenta de la lista de resultados
-            # La lista esta en: //*[@id="scopeExpandedAccountMenu"]/div[3]/ul
-            # El li contiene el numero de cuenta
+            # 4. Select account from results list
+            # List is at: //*[@id="scopeExpandedAccountMenu"]/div[3]/ul
+            # The li contains the account number
             account_list_item_xpath = f'//*[@id="scopeExpandedAccountMenu"]/div[3]/ul//li[contains(., "{target_account}")]'
 
             if self.browser_wrapper.find_element_by_xpath(account_list_item_xpath, timeout=5000):
-                self.logger.info(f"Cuenta {target_account} encontrada en la lista, seleccionando...")
+                self.logger.info(f"Account {target_account} found in list, selecting...")
                 self.browser_wrapper.click_element(account_list_item_xpath)
                 time.sleep(1)
             else:
-                self.logger.error(f"Cuenta {target_account} NO encontrada en la lista de resultados")
+                self.logger.error(f"Account {target_account} NOT found in results list")
                 return False
 
-            # 5. Click en OK button para confirmar
+            # 5. Click on OK button to confirm
             ok_button_xpath = '//*[@id="scopeExpandedAccountMenu"]/div[4]/button'
-            self.logger.info("Click en OK button para confirmar cuenta...")
+            self.logger.info("Clicking on OK button to confirm account...")
             self.browser_wrapper.click_element(ok_button_xpath)
 
             time.sleep(2)
-            self.logger.info(f"Scope filter configurado para cuenta: {target_account}")
+            self.logger.info(f"Scope filter configured for account: {target_account}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configurando Scope filter: {str(e)}")
+            self.logger.error(f"Error configuring Scope filter: {str(e)}")
             return False
 
     def _configure_month_filter(self, billing_cycle: BillingCycle) -> bool:
-        """Configura el filtro de Month basado en el end_date del billing cycle."""
+        """Configures Month filter based on billing cycle end_date."""
         try:
             target_month = billing_cycle.end_date.month
             target_year = billing_cycle.end_date.year
 
-            # Mapeo de numero de mes a nombre en ingles
+            # Month number to English name mapping
             month_names = {
                 1: "January", 2: "February", 3: "March", 4: "April",
                 5: "May", 6: "June", 7: "July", 8: "August",
@@ -177,80 +177,80 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             }
             month_name = month_names[target_month]
 
-            self.logger.info(f"Configurando Month filter para: {month_name} {target_year}")
+            self.logger.info(f"Configuring Month filter for: {month_name} {target_year}")
 
-            # 1. Click en Month dropdown button
+            # 1. Click on Month dropdown button
             month_dropdown_xpath = '//*[@id="BilledMonthYearPendingDataDropdownButton"]'
-            self.logger.info("Click en Month dropdown...")
+            self.logger.info("Clicking on Month dropdown...")
             self.browser_wrapper.click_element(month_dropdown_xpath)
             time.sleep(2)
 
-            # 2. Buscar y seleccionar el mes correcto
-            # Formato de las opciones: "December 2025", "November 2025", etc.
+            # 2. Search and select correct month
+            # Options format: "December 2025", "November 2025", etc.
             target_text = f"{month_name} {target_year}"
 
-            # Buscar en la lista de opciones
+            # Search in options list
             month_option_xpath = f"//li[@role='option'][contains(text(), '{target_text}')]"
 
             if self.browser_wrapper.find_element_by_xpath(month_option_xpath, timeout=5000):
-                self.logger.info(f"Mes '{target_text}' encontrado, seleccionando...")
+                self.logger.info(f"Month '{target_text}' found, selecting...")
                 self.browser_wrapper.click_element(month_option_xpath)
                 time.sleep(2)
-                self.logger.info(f"Month filter configurado: {target_text}")
+                self.logger.info(f"Month filter configured: {target_text}")
                 return True
             else:
-                self.logger.error(f"Mes '{target_text}' NO encontrado en la lista")
+                self.logger.error(f"Month '{target_text}' NOT found in list")
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error configurando Month filter: {str(e)}")
+            self.logger.error(f"Error configuring Month filter: {str(e)}")
             return False
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga las facturas PDF de Telus."""
+        """Downloads PDF invoices from Telus."""
         downloaded_files = []
 
-        # Obtener el BillingCyclePDFFile del billing_cycle
+        # Get BillingCyclePDFFile from billing_cycle
         pdf_file = billing_cycle.pdf_files[0] if billing_cycle.pdf_files else None
         if pdf_file:
-            self.logger.info(f"Mapeando archivo PDF -> BillingCyclePDFFile ID {pdf_file.id}")
+            self.logger.info(f"Mapping PDF file -> BillingCyclePDFFile ID {pdf_file.id}")
 
         target_account = billing_cycle.account.number
 
         try:
-            self.logger.info("=== INICIANDO PROCESO DE DESCARGA DE PDF ===")
+            self.logger.info("=== STARTING PDF DOWNLOAD PROCESS ===")
 
-            # 1. Buscar en la tabla DataTable el primer row con la cuenta correcta
+            # 1. Search in DataTable for row with correct account
             data_table_xpath = '//*[@id="DataTable"]'
 
             if not self.browser_wrapper.find_element_by_xpath(data_table_xpath, timeout=10000):
-                self.logger.error("Tabla de statements no encontrada")
+                self.logger.error("Statements table not found")
                 return downloaded_files
 
-            self.logger.info("Tabla de statements encontrada")
+            self.logger.info("Statements table found")
 
-            # 2. Buscar el boton "PDF Bill" en la fila de la cuenta correcta
-            # El boton tiene aria-label que contiene el numero de cuenta
+            # 2. Search for "PDF Bill" button in correct account row
+            # Button has aria-label containing account number
             pdf_button_xpath = f"//button[contains(@aria-label, 'PDF Bill')][contains(@aria-label, '{target_account}')]"
 
-            # Alternativa: buscar en el primer row
+            # Alternative: search in first row
             pdf_button_alt_xpath = "//tbody/tr[1]//button[contains(@aria-label, 'PDF Bill')]"
 
             if self.browser_wrapper.find_element_by_xpath(pdf_button_xpath, timeout=5000):
-                self.logger.info(f"Boton PDF Bill encontrado para cuenta {target_account}")
+                self.logger.info(f"PDF Bill button found for account {target_account}")
                 self.browser_wrapper.click_element(pdf_button_xpath)
             elif self.browser_wrapper.find_element_by_xpath(pdf_button_alt_xpath, timeout=3000):
-                self.logger.info("Boton PDF Bill encontrado en primer row")
+                self.logger.info("PDF Bill button found in first row")
                 self.browser_wrapper.click_element(pdf_button_alt_xpath)
             else:
-                self.logger.error("Boton PDF Bill no encontrado")
+                self.logger.error("PDF Bill button not found")
                 return downloaded_files
 
             time.sleep(3)
 
-            # 3. Verificar que la cuenta en el modal sea la correcta
+            # 3. Verify account in modal is correct
             modal_header_xpath = '//*[@id="bdfModalHeaderText"]'
 
             if self.browser_wrapper.find_element_by_xpath(modal_header_xpath, timeout=5000):
@@ -258,47 +258,47 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 self.logger.info(f"Modal header: '{modal_text}'")
 
                 if target_account not in modal_text:
-                    self.logger.error(f"Cuenta en modal '{modal_text}' no coincide con '{target_account}'")
+                    self.logger.error(f"Account in modal '{modal_text}' doesn't match '{target_account}'")
                     self._close_modal_and_reset()
                     return downloaded_files
 
-                self.logger.info(f"Cuenta verificada en modal: {target_account}")
+                self.logger.info(f"Account verified in modal: {target_account}")
             else:
-                self.logger.warning("No se pudo verificar cuenta en modal header")
+                self.logger.warning("Could not verify account in modal header")
 
-            # 4. Click en "PDF copy of your print bill" para expandir la lista
+            # 4. Click on "PDF copy of your print bill" to expand list
             pdf_copy_xpath = "//a[contains(@class, 'bdfDocType')][contains(., 'PDF copy of your print bill')]"
 
             if self.browser_wrapper.find_element_by_xpath(pdf_copy_xpath, timeout=5000):
-                self.logger.info("Click en 'PDF copy of your print bill'...")
+                self.logger.info("Clicking on 'PDF copy of your print bill'...")
                 self.browser_wrapper.click_element(pdf_copy_xpath)
                 time.sleep(2)
             else:
-                self.logger.error("Opcion 'PDF copy of your print bill' no encontrada")
+                self.logger.error("'PDF copy of your print bill' option not found")
                 self._close_modal_and_reset()
                 return downloaded_files
 
-            # 5. Seleccionar la fecha correcta basada en end_date
-            # Formato de las opciones: "YYYY/MM/DD" (ej: "2025/11/21")
+            # 5. Select correct date based on end_date
+            # Options format: "YYYY/MM/DD" (e.g.: "2025/11/21")
             target_year = billing_cycle.end_date.year
             target_month = billing_cycle.end_date.month
 
-            # Buscar la opcion con el ano y mes correctos
+            # Search for option with correct year and month
             date_pattern = f"{target_year}/{target_month:02d}"
             date_button_xpath = f"//button[contains(@class, 'bdf-doc-item')][contains(text(), '{date_pattern}')]"
 
             if self.browser_wrapper.find_element_by_xpath(date_button_xpath, timeout=5000):
                 button_text = self.browser_wrapper.get_text(date_button_xpath)
-                self.logger.info(f"Fecha encontrada: '{button_text}', descargando PDF...")
+                self.logger.info(f"Date found: '{button_text}', downloading PDF...")
 
-                # Click dispara la descarga automaticamente
+                # Click triggers download automatically
                 downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                     date_button_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
                 )
 
                 if downloaded_file_path:
                     actual_filename = os.path.basename(downloaded_file_path)
-                    self.logger.info(f"PDF descargado: {actual_filename}")
+                    self.logger.info(f"PDF downloaded: {actual_filename}")
 
                     file_info = FileDownloadInfo(
                         file_id=pdf_file.id if pdf_file else 1,
@@ -311,22 +311,22 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
 
                     if pdf_file:
                         self.logger.info(
-                            f"MAPEO CONFIRMADO: {actual_filename} -> BillingCyclePDFFile ID {pdf_file.id}"
+                            f"MAPPING CONFIRMED: {actual_filename} -> BillingCyclePDFFile ID {pdf_file.id}"
                         )
                 else:
-                    self.logger.error("Error en descarga del PDF")
+                    self.logger.error("Error downloading PDF")
             else:
-                self.logger.error(f"No se encontro PDF para fecha {date_pattern}")
-                # Listar opciones disponibles para debug
+                self.logger.error(f"PDF not found for date {date_pattern}")
+                # List available options for debug
                 self._list_available_pdf_dates()
 
-            # 6. Cerrar modal y reset
+            # 6. Close modal and reset
             self._close_modal_and_reset()
 
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error en descarga de PDF: {str(e)}")
+            self.logger.error(f"Error in PDF download: {str(e)}")
             try:
                 self._close_modal_and_reset()
             except:
@@ -334,11 +334,11 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             return downloaded_files
 
     def _list_available_pdf_dates(self):
-        """Lista las fechas de PDF disponibles para debug."""
+        """Lists available PDF dates for debug."""
         try:
-            self.logger.info("Listando fechas de PDF disponibles:")
+            self.logger.info("Listing available PDF dates:")
 
-            # Buscar todos los botones de fecha
+            # Search for all date buttons
             for i in range(1, 20):
                 button_xpath = f"(//button[contains(@class, 'bdf-doc-item')])[{i}]"
                 if self.browser_wrapper.find_element_by_xpath(button_xpath, timeout=1000):
@@ -348,32 +348,32 @@ class TelusPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                     break
 
         except Exception as e:
-            self.logger.warning(f"Error listando fechas: {str(e)}")
+            self.logger.warning(f"Error listing dates: {str(e)}")
 
     def _close_modal_and_reset(self):
-        """Cierra el modal de PDF y resetea a la pantalla principal."""
+        """Closes PDF modal and resets to main screen."""
         try:
-            # Cerrar modal
+            # Close modal
             close_button_xpath = '//*[@id="bdfModal"]/div/div/div[1]/button'
             if self.browser_wrapper.find_element_by_xpath(close_button_xpath, timeout=3000):
-                self.logger.info("Cerrando modal de PDF...")
+                self.logger.info("Closing PDF modal...")
                 self.browser_wrapper.click_element(close_button_xpath)
                 time.sleep(2)
 
-            # Reset a My Telus
+            # Reset to My Telus
             self._reset_to_main_screen()
 
         except Exception as e:
-            self.logger.warning(f"Error cerrando modal: {str(e)}")
+            self.logger.warning(f"Error closing modal: {str(e)}")
             self._reset_to_main_screen()
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de Telus."""
+        """Resets to Telus main screen."""
         try:
-            self.logger.info("Reseteando a My Telus...")
+            self.logger.info("Resetting to My Telus...")
             self.browser_wrapper.goto("https://www.telus.com/my-telus")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            self.logger.info("Reset completado")
+            self.logger.info("Reset completed")
         except Exception as e:
-            self.logger.error(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error in reset: {str(e)}")

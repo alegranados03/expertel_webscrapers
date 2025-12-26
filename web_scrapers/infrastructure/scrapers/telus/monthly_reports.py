@@ -15,135 +15,135 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
-    """Scraper de reportes mensuales para Telus."""
+    """Monthly reports scraper for Telus."""
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de reportes mensuales de Telus."""
+        """Navigates to Telus monthly reports section."""
         try:
-            self.logger.info("Navegando a reportes mensuales de Telus...")
+            self.logger.info("Navigating to Telus monthly reports...")
 
-            # 1. Navegar a My Telus
-            self.logger.info("Navegando a My Telus...")
+            # 1. Navigate to My Telus
+            self.logger.info("Navigating to My Telus...")
             self.browser_wrapper.goto("https://www.telus.com/my-telus")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
-            self.logger.info("Navegacion inicial completada - listo para descarga de archivos")
+            self.logger.info("Initial navigation completed - ready for file download")
             return {"section": "monthly_reports", "ready_for_download": True}
 
         except Exception as e:
-            self.logger.error(f"Error navegando a reportes mensuales: {str(e)}")
+            self.logger.error(f"Error navigating to monthly reports: {str(e)}")
             return None
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga los archivos de reportes mensuales de Telus."""
+        """Downloads Telus monthly report files."""
         downloaded_files = []
 
-        # Mapear BillingCycleFiles por slug
+        # Map BillingCycleFiles by slug
         billing_cycle_file_map = {}
         if billing_cycle.billing_cycle_files:
             for bcf in billing_cycle.billing_cycle_files:
                 if bcf.carrier_report and bcf.carrier_report.slug:
                     billing_cycle_file_map[bcf.carrier_report.slug] = bcf
-                    self.logger.info(f"Mapeando BillingCycleFile ID {bcf.id} -> Slug: '{bcf.carrier_report.slug}'")
+                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{bcf.carrier_report.slug}'")
 
         try:
-            # === PARTE 1: DESCARGAR ZIP DESDE BILLS SECTION ===
-            self.logger.info("=== PARTE 1: DESCARGANDO ZIP DESDE BILLS SECTION ===")
+            # === PART 1: DOWNLOAD ZIP FROM BILLS SECTION ===
+            self.logger.info("=== PART 1: DOWNLOADING ZIP FROM BILLS SECTION ===")
 
-            # 1. Click en bill options button
+            # 1. Click on bill options button
             bill_options_xpath = (
                 "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/div/div"
             )
-            self.logger.info("Click en bill options...")
+            self.logger.info("Clicking on bill options...")
             self.browser_wrapper.click_element(bill_options_xpath)
 
-            # 2. Click inmediato en text-bill link (el menu aparece y desaparece del DOM)
+            # 2. Immediate click on text-bill link (menu appears and disappears from DOM)
             text_bill_xpath = "//a[@href='/my-telus/text-bill?intcmp=tcom_mt_overview_button_download-text-bill']"
-            self.logger.info("Click en text-bill link...")
-            time.sleep(0.5)  # Breve espera para que aparezca el menu
+            self.logger.info("Clicking on text-bill link...")
+            time.sleep(0.5)  # Brief wait for menu to appear
             self.browser_wrapper.click_element(text_bill_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
 
-            # 3. Manejar posible pantalla de seleccion de cuenta (primera vez)
+            # 3. Handle possible account selection screen (first time)
             if not self._handle_account_selection(billing_cycle):
-                self.logger.error("Fallo en seleccion de cuenta inicial - abortando scraper")
+                self.logger.error("Initial account selection failed - aborting scraper")
                 return downloaded_files
             time.sleep(2)
 
-            # 4. Verificar que la cuenta seleccionada sea la correcta (caso de sesion previa con cuenta diferente)
+            # 4. Verify current account is correct (case of previous session with different account)
             if not self._verify_current_account(billing_cycle):
-                self.logger.error("Fallo en verificacion de cuenta actual - abortando scraper")
+                self.logger.error("Current account verification failed - aborting scraper")
                 return downloaded_files
             time.sleep(2)
 
-            # 5. Buscar y click en el mes correcto basado en end_date
+            # 5. Find and click on correct month based on end_date
             target_month = billing_cycle.end_date.strftime("%B")
             target_year = billing_cycle.end_date.year
 
-            self.logger.info(f"Buscando mes: {target_month} {target_year}")
+            self.logger.info(f"Searching for month: {target_month} {target_year}")
 
-            # 6. Descargar ZIP haciendo click en el mes (el click descarga directamente el ZIP)
+            # 6. Download ZIP by clicking on month (click directly downloads ZIP)
             zip_file_path = self._click_month_and_download_zip(target_month, target_year)
 
             if zip_file_path:
-                # 7. Procesar archivos extraidos del ZIP
+                # 7. Process files extracted from ZIP
                 zip_files = self._process_downloaded_zip(zip_file_path, billing_cycle_file_map)
                 downloaded_files.extend(zip_files)
-                self.logger.info(f"Parte 1 completada: {len(zip_files)} archivos del ZIP")
+                self.logger.info(f"Part 1 completed: {len(zip_files)} files from ZIP")
             else:
-                self.logger.info("No se pudo descargar el ZIP del mes objetivo")
+                self.logger.info("Could not download ZIP for target month")
 
-            # === PARTE 2: DESCARGAR MOBILITY DEVICE SUMMARY DESDE SUMMARY REPORTS ===
-            # Los archivos del ZIP (group_summary, individual_detail) ya se obtuvieron en Parte 1.
-            # Aqui descargamos mobility_device desde Summary Reports en Telus IQ.
+            # === PART 2: DOWNLOAD MOBILITY DEVICE SUMMARY FROM SUMMARY REPORTS ===
+            # ZIP files (group_summary, individual_detail) were obtained in Part 1.
+            # Here we download mobility_device from Summary Reports in Telus IQ.
 
-            self.logger.info("=== PARTE 2: DESCARGANDO MOBILITY DEVICE DESDE SUMMARY REPORTS ===")
+            self.logger.info("=== PART 2: DOWNLOADING MOBILITY DEVICE FROM SUMMARY REPORTS ===")
 
-            # 1. Navegar a billing header (Telus IQ)
+            # 1. Navigate to billing header (Telus IQ)
             billing_header_xpath = '//*[@id="navOpen"]/li[2]/a'
-            self.logger.info("Click en billing header...")
+            self.logger.info("Clicking on billing header...")
             self.browser_wrapper.click_element(billing_header_xpath)
             self.logger.info("Waiting 30 seconds...")
             time.sleep(30)
 
-            # 1.1. Detectar y cerrar modal Bill Analyzer si aparece
+            # 1.1. Detect and close Bill Analyzer modal if it appears
             self._dismiss_bill_analyzer_modal()
 
-            # 2. Click en reports header
+            # 2. Click on reports header
             reports_header_xpath = '//*[@id="navMenuGroupReports"]'
-            self.logger.info("Click en reports header...")
+            self.logger.info("Clicking on reports header...")
             self.browser_wrapper.click_element(reports_header_xpath)
             time.sleep(2)
 
-            # 3. Click en summary reports (NO detail reports)
+            # 3. Click on summary reports (NOT detail reports)
             summary_reports_xpath = '//*[@id="navMenuItem5"]'
-            self.logger.info("Click en summary reports...")
+            self.logger.info("Clicking on summary reports...")
             self.browser_wrapper.click_element(summary_reports_xpath)
             self.browser_wrapper.wait_for_page_load()
-            self.logger.info("Waitings 30 seconds...")
+            self.logger.info("Waiting 30 seconds...")
             time.sleep(30)
 
-            # 4. Descargar Mobility Device Summary (incluye configuracion de filtros Scope y Date Range)
+            # 4. Download Mobility Device Summary (includes Scope and Date Range filter configuration)
             individual_files = self._download_individual_reports(billing_cycle, billing_cycle_file_map)
             downloaded_files.extend(individual_files)
-            self.logger.info(f"Parte 2 completada: {len(individual_files)} archivos individuales")
+            self.logger.info(f"Part 2 completed: {len(individual_files)} individual files")
 
-            #Reset a pantalla principal
+            # Reset to main screen
             self._reset_to_main_screen()
 
-            self.logger.info(f"DESCARGA TOTAL COMPLETADA: {len(downloaded_files)} archivos")
+            self.logger.info(f"TOTAL DOWNLOAD COMPLETED: {len(downloaded_files)} files")
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error en descarga de archivos: {str(e)}")
+            self.logger.error(f"Error downloading files: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
@@ -151,91 +151,91 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return downloaded_files
 
     def _handle_account_selection(self, billing_cycle: BillingCycle) -> bool:
-        """Maneja la pantalla de seleccion de cuenta si aparece (para credenciales con multiples cuentas)."""
+        """Handles account selection screen if it appears (for credentials with multiple accounts)."""
         try:
-            # Verificar si estamos en la pantalla "Find your account"
+            # Check if we are on "Find your account" screen
             find_account_header_xpath = (
                 "//*[@id='__next']/div/div[1]/div/div/div/div[1]/div/div[2]/div/div/div/div[1]/div/h1"
             )
 
             header_element = self.browser_wrapper.find_element_by_xpath(find_account_header_xpath)
             if not header_element:
-                self.logger.info("No se encontro pantalla de seleccion de cuenta, continuando...")
+                self.logger.info("Account selection screen not found, continuing...")
                 return True
 
-            # Verificar el texto del header
+            # Verify header text
             header_text = self.browser_wrapper.get_text(find_account_header_xpath)
             if "Find your account" not in header_text:
-                self.logger.info(f"Header encontrado pero texto diferente: '{header_text}', continuando...")
+                self.logger.info(f"Header found but different text: '{header_text}', continuing...")
                 return True
 
-            self.logger.info("Pantalla 'Find your account' detectada - seleccionando cuenta correcta...")
+            self.logger.info("'Find your account' screen detected - selecting correct account...")
             return self._select_account_from_list(billing_cycle)
 
         except Exception as e:
-            self.logger.error(f"Error manejando seleccion de cuenta: {str(e)}")
+            self.logger.error(f"Error handling account selection: {str(e)}")
             return False
 
     def _select_account_from_list(self, billing_cycle: BillingCycle) -> bool:
-        """Selecciona la cuenta correcta de la lista de cuentas disponibles."""
+        """Selects the correct account from the list of available accounts."""
         try:
 
             target_account_number = billing_cycle.account.number
-            self.logger.info(f"Buscando cuenta: {target_account_number}")
+            self.logger.info(f"Searching for account: {target_account_number}")
 
-            # Buscar el div que contiene el numero de cuenta especifico
+            # Search for div containing specific account number
             account_number_xpath = f"//div[@data-testid='account-card-north-star']//div[contains(text(), '{target_account_number}')]"
 
             if self.browser_wrapper.find_element_by_xpath(account_number_xpath):
-                self.logger.info(f"Cuenta {target_account_number} encontrada, haciendo click...")
+                self.logger.info(f"Account {target_account_number} found, clicking...")
                 target_card_xpath = f"//div[@data-testid='account-card-north-star'][.//div[contains(text(), '{target_account_number}')]]"
                 self.browser_wrapper.click_element(target_card_xpath)
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
-                self.logger.info(f"Cuenta {target_account_number} seleccionada exitosamente")
+                self.logger.info(f"Account {target_account_number} selected successfully")
                 return True
             else:
-                self.logger.error(f"Cuenta {target_account_number} NO encontrada en la lista de cuentas disponibles")
+                self.logger.error(f"Account {target_account_number} NOT found in available accounts list")
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error seleccionando cuenta de la lista: {str(e)}")
+            self.logger.error(f"Error selecting account from list: {str(e)}")
             return False
 
     def _verify_current_account(self, billing_cycle: BillingCycle) -> bool:
         """
-        Verifica que la cuenta actualmente seleccionada sea la correcta.
-        Este metodo se usa justo antes de descargar el ZIP, donde aparece el header con 'Account #XXXXXXXX'.
-        Si la cuenta no coincide, hace click en 'Change' y selecciona la cuenta correcta.
+        Verifies that currently selected account is correct.
+        This method is used right before downloading ZIP, where header shows 'Account #XXXXXXXX'.
+        If account doesn't match, clicks 'Change' and selects correct account.
         """
         try:
             target_account_number = billing_cycle.account.number
-            self.logger.info(f"Verificando cuenta actual vs objetivo: {target_account_number}")
+            self.logger.info(f"Verifying current account vs target: {target_account_number}")
 
-            # Buscar el elemento que muestra la cuenta actual
-            # Estructura: <div>Account #42680715</div> seguido de <a>Change</a>
+            # Search for element showing current account
+            # Structure: <div>Account #42680715</div> followed by <a>Change</a>
             account_header_xpath = "//*[@id='app']/div/div[2]/div/div[1]/div/div[2]"
 
             if not self.browser_wrapper.find_element_by_xpath(account_header_xpath):
-                self.logger.info("No se encontro header de cuenta (credenciales con cuenta unica), continuando...")
+                self.logger.info("Account header not found (single account credentials), continuing...")
                 return True
 
-            # Obtener el texto del header de cuenta
+            # Get account header text
             account_header_text = self.browser_wrapper.get_text(account_header_xpath)
-            self.logger.info(f"Header de cuenta encontrado: '{account_header_text}'")
+            self.logger.info(f"Account header found: '{account_header_text}'")
 
-            # Verificar si el numero de cuenta objetivo esta en el header
+            # Verify target account number is in header
             if target_account_number in account_header_text:
-                self.logger.info(f"Cuenta correcta confirmada: {target_account_number}")
+                self.logger.info(f"Correct account confirmed: {target_account_number}")
                 return True
 
-            # La cuenta no coincide, necesitamos cambiarla
-            self.logger.info(f"Cuenta incorrecta detectada. Esperado: {target_account_number}, Actual: {account_header_text}")
-            self.logger.info("Haciendo click en 'Change' para cambiar de cuenta...")
+            # Account doesn't match, need to change it
+            self.logger.info(f"Incorrect account detected. Expected: {target_account_number}, Actual: {account_header_text}")
+            self.logger.info("Clicking 'Change' to switch account...")
 
-            # Buscar y hacer click en el enlace "Change"
+            # Find and click 'Change' link
             change_link_xpath = "//*[@id='app']/div/div[2]/div/div[1]/div/div[2]//a[contains(text(), 'Change')]"
-            # Alternativa mas especifica basada en la estructura proporcionada
+            # More specific alternative based on provided structure
             change_link_alt_xpath = "//a[.//div[contains(text(), 'Change')]]"
 
             if self.browser_wrapper.find_element_by_xpath(change_link_xpath):
@@ -243,46 +243,46 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             elif self.browser_wrapper.find_element_by_xpath(change_link_alt_xpath):
                 self.browser_wrapper.click_element(change_link_alt_xpath)
             else:
-                self.logger.error("No se encontro el enlace 'Change'")
+                self.logger.error("'Change' link not found")
                 return False
 
             time.sleep(5)
 
-            self.logger.info("Navegando a pantalla de seleccion de cuenta...")
+            self.logger.info("Navigating to account selection screen...")
             return self._select_account_from_list(billing_cycle)
 
         except Exception as e:
-            self.logger.error(f"Error verificando cuenta actual: {str(e)}")
+            self.logger.error(f"Error verifying current account: {str(e)}")
             return True
 
     def _click_month_and_download_zip(self, target_month: str, target_year: int) -> Optional[str]:
         """
-        Busca el mes objetivo y descarga el ZIP haciendo click en el mes.
-        El click en el mes descarga directamente el archivo ZIP.
-        Retorna la ruta del archivo descargado o None si falla.
+        Searches for target month and downloads ZIP by clicking on month.
+        Click on month directly downloads ZIP file.
+        Returns downloaded file path or None if fails.
         """
         try:
-            self.logger.info(f"Directorio de descarga configurado: {self.job_downloads_dir}")
+            self.logger.info(f"Download directory configured: {self.job_downloads_dir}")
 
-            # Buscar el ano objetivo primero
+            # Search for target year first
             year_xpath = f"//h2[contains(text(), '{target_year}')]"
             if not self.browser_wrapper.find_element_by_xpath(year_xpath):
-                self.logger.error(f"No se encontro el ano {target_year}")
+                self.logger.error(f"Year {target_year} not found")
                 return None
 
-            self.logger.info(f"Encontrado ano {target_year}")
+            self.logger.info(f"Found year {target_year}")
 
-            # Buscar el enlace del mes objetivo
+            # Search for target month link
             month_link_xpath = f"//div[contains(@class, 'css-146c3p1') and contains(text(), '{target_month}')]"
 
             if not self.browser_wrapper.find_element_by_xpath(month_link_xpath):
-                self.logger.error(f"No se encontro el mes {target_month} en el ano {target_year}")
+                self.logger.error(f"Month {target_month} not found in year {target_year}")
                 return None
 
-            self.logger.info(f"Encontrado mes {target_month}, descargando ZIP...")
+            self.logger.info(f"Found month {target_month}, downloading ZIP...")
 
-            # El click en el mes descarga directamente el ZIP
-            # Usar expect_download_and_click para capturar la descarga
+            # Click on month directly downloads ZIP
+            # Use expect_download_and_click to capture download
             parent_link_xpath = f"//div[contains(@class, 'css-146c3p1') and contains(text(), '{target_month}')]/parent::div/parent::div"
 
             zip_file_path = self.browser_wrapper.expect_download_and_click(
@@ -290,56 +290,56 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             )
 
             if zip_file_path:
-                self.logger.info(f"ZIP descargado exitosamente: {zip_file_path}")
+                self.logger.info(f"ZIP downloaded successfully: {zip_file_path}")
                 return zip_file_path
             else:
-                self.logger.error("expect_download_and_click retorno None")
-                # Verificar si el archivo se descargo de todos modos
+                self.logger.error("expect_download_and_click returned None")
+                # Check if file was downloaded anyway
                 if self.job_downloads_dir and os.path.exists(self.job_downloads_dir):
                     files_in_dir = os.listdir(self.job_downloads_dir)
-                    self.logger.info(f"Archivos en directorio de descarga: {files_in_dir}")
-                    # Buscar archivos ZIP
+                    self.logger.info(f"Files in download directory: {files_in_dir}")
+                    # Search for ZIP files
                     zip_files = [f for f in files_in_dir if f.endswith('.zip')]
                     if zip_files:
                         zip_file_path = os.path.join(self.job_downloads_dir, zip_files[0])
-                        self.logger.info(f"ZIP encontrado manualmente: {zip_file_path}")
+                        self.logger.info(f"ZIP found manually: {zip_file_path}")
                         return zip_file_path
                 return None
 
         except Exception as e:
-            self.logger.error(f"Error descargando ZIP del mes: {str(e)}")
+            self.logger.error(f"Error downloading month ZIP: {str(e)}")
             return None
 
     def _process_downloaded_zip(self, zip_file_path: str, file_map: dict) -> List[FileDownloadInfo]:
         """
-        Procesa el ZIP descargado, extrae archivos y los mapea a BillingCycleFiles.
-        IMPORTANTE: Solo se agregan a downloaded_files los archivos que tienen mapeo valido.
-        Del ZIP solo se necesitan: individual_detail, group_summary
+        Processes downloaded ZIP, extracts files and maps to BillingCycleFiles.
+        IMPORTANT: Only files with valid mapping are added to downloaded_files.
+        Only needed from ZIP: individual_detail, group_summary
         """
         downloaded_files = []
 
         try:
-            self.logger.info(f"Procesando ZIP: {os.path.basename(zip_file_path)}")
+            self.logger.info(f"Processing ZIP: {os.path.basename(zip_file_path)}")
 
-            # Extraer archivos del ZIP
+            # Extract files from ZIP
             extracted_files = self._extract_zip_files(zip_file_path)
             if not extracted_files:
-                self.logger.error("No se pudieron extraer archivos del ZIP")
+                self.logger.error("Could not extract files from ZIP")
                 return downloaded_files
 
-            self.logger.info(f"Extraidos {len(extracted_files)} archivos del ZIP")
+            self.logger.info(f"Extracted {len(extracted_files)} files from ZIP")
 
-            # Procesar archivos extraidos y mapearlos
-            # SOLO agregar archivos que tienen mapeo valido (individual_detail, group_summary)
+            # Process extracted files and map them
+            # ONLY add files with valid mapping (individual_detail, group_summary)
             for file_path in extracted_files:
                 original_filename = os.path.basename(file_path)
-                self.logger.info(f"Procesando archivo: {original_filename}")
+                self.logger.info(f"Processing file: {original_filename}")
 
-                # Buscar el BillingCycleFile correspondiente
+                # Find corresponding BillingCycleFile
                 corresponding_bcf = self._find_matching_billing_cycle_file(original_filename, file_map)
 
                 if corresponding_bcf:
-                    self.logger.info(f"Mapeando {original_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
+                    self.logger.info(f"Mapping {original_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
                     file_info = FileDownloadInfo(
                         file_id=corresponding_bcf.id,
                         file_name=original_filename,
@@ -349,23 +349,23 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     )
                     downloaded_files.append(file_info)
                 else:
-                    self.logger.info(f"Archivo {original_filename} sin mapeo - NO se agregara a la lista de subida")
+                    self.logger.info(f"File {original_filename} without mapping - NOT added to upload list")
 
-            self.logger.info(f"Total archivos del ZIP con mapeo valido: {len(downloaded_files)}")
+            self.logger.info(f"Total ZIP files with valid mapping: {len(downloaded_files)}")
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error procesando ZIP: {str(e)}")
+            self.logger.error(f"Error processing ZIP: {str(e)}")
             return downloaded_files
 
     def _download_and_process_zip(self, billing_cycle: BillingCycle, file_map: dict) -> List[FileDownloadInfo]:
-        """Descarga y procesa el ZIP con los archivos del mes."""
+        """Downloads and processes ZIP with month files."""
         downloaded_files = []
 
         try:
-            self.logger.info(f"Directorio de descarga configurado: {self.job_downloads_dir}")
+            self.logger.info(f"Download directory configured: {self.job_downloads_dir}")
 
-            # Posibles XPaths para el enlace de descarga ZIP
+            # Possible XPaths for ZIP download link
             zip_download_xpaths = [
                 "//a[contains(@href, '.zip') or contains(text(), 'download') or contains(text(), 'Download')]",
                 "//button[contains(text(), 'download') or contains(text(), 'Download')]",
@@ -376,51 +376,51 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             for xpath in zip_download_xpaths:
                 try:
                     if self.browser_wrapper.find_element_by_xpath(xpath):
-                        self.logger.info(f"Elemento encontrado con xpath: {xpath}")
-                        self.logger.info(f"Intentando descargar ZIP a: {self.job_downloads_dir}")
+                        self.logger.info(f"Element found with xpath: {xpath}")
+                        self.logger.info(f"Attempting ZIP download to: {self.job_downloads_dir}")
                         zip_file_path = self.browser_wrapper.expect_download_and_click(
                             xpath, timeout=60000, downloads_dir=self.job_downloads_dir
                         )
-                        self.logger.info(f"Resultado de descarga: {zip_file_path}")
+                        self.logger.info(f"Download result: {zip_file_path}")
                         if zip_file_path:
                             break
                 except Exception as e:
-                    self.logger.error(f"Error con xpath {xpath}: {str(e)}")
+                    self.logger.error(f"Error with xpath {xpath}: {str(e)}")
                     continue
 
             if not zip_file_path:
-                self.logger.error(f"No se pudo descargar ZIP. Verificando directorio: {self.job_downloads_dir}")
-                # Listar archivos en el directorio de descarga para diagnóstico
+                self.logger.error(f"Could not download ZIP. Checking directory: {self.job_downloads_dir}")
+                # List files in download directory for diagnostics
                 if self.job_downloads_dir and os.path.exists(self.job_downloads_dir):
                     files_in_dir = os.listdir(self.job_downloads_dir)
-                    self.logger.info(f"Archivos en directorio de descarga: {files_in_dir}")
+                    self.logger.info(f"Files in download directory: {files_in_dir}")
                 return downloaded_files
 
-            self.logger.info(f"ZIP descargado: {os.path.basename(zip_file_path)}")
+            self.logger.info(f"ZIP downloaded: {os.path.basename(zip_file_path)}")
 
-            # Extraer archivos del ZIP
+            # Extract files from ZIP
             extracted_files = self._extract_zip_files(zip_file_path)
             if not extracted_files:
-                self.logger.info("No se pudieron extraer archivos del ZIP")
+                self.logger.info("Could not extract files from ZIP")
                 return downloaded_files
 
-            self.logger.info(f"Extraidos {len(extracted_files)} archivos del ZIP")
+            self.logger.info(f"Extracted {len(extracted_files)} files from ZIP")
 
-            # Procesar archivos extraidos y mapearlos
+            # Process extracted files and map them
             for i, file_path in enumerate(extracted_files):
                 original_filename = os.path.basename(file_path)
-                self.logger.info(f"Procesando archivo: {original_filename}")
+                self.logger.info(f"Processing file: {original_filename}")
 
-                # Buscar el BillingCycleFile correspondiente
+                # Find corresponding BillingCycleFile
                 corresponding_bcf = self._find_matching_billing_cycle_file(original_filename, file_map)
 
                 if corresponding_bcf:
-                    self.logger.info(f"Mapeando {original_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
+                    self.logger.info(f"Mapping {original_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
                 else:
-                    self.logger.info(f"No se encontro mapeo para {original_filename}")
+                    self.logger.info(f"No mapping found for {original_filename}")
 
                 file_info = FileDownloadInfo(
-                    file_id=corresponding_bcf.id if corresponding_bcf else (i + 1000),  # Offset para ZIP files
+                    file_id=corresponding_bcf.id if corresponding_bcf else (i + 1000),  # Offset for ZIP files
                     file_name=original_filename,
                     download_url="N/A",
                     file_path=file_path,
@@ -431,20 +431,20 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error procesando ZIP: {str(e)}")
+            self.logger.error(f"Error processing ZIP: {str(e)}")
             return downloaded_files
 
     def _find_matching_billing_cycle_file(self, filename: str, file_map: dict) -> Optional[Any]:
         """
-        Encuentra el BillingCycleFile que corresponde al nombre de archivo.
-        NOTA: Solo mapea archivos del ZIP (individual_detail, group_summary).
-        El mobility_device viene de los reportes individuales (Parte 2).
+        Finds BillingCycleFile matching the filename.
+        NOTE: Only maps ZIP files (individual_detail, group_summary).
+        mobility_device comes from individual reports (Part 2).
         """
         filename_lower = filename.lower()
 
-        # Mapeo de patrones de nombres de archivos ZIP a slugs de Telus
-        # Solo 2 slugs del ZIP: individual_detail, group_summary
-        # mobility_device se obtiene de la Parte 2 (reportes individuales)
+        # Mapping of ZIP filename patterns to Telus slugs
+        # Only 2 slugs from ZIP: individual_detail, group_summary
+        # mobility_device is obtained from Part 2 (individual reports)
         pattern_to_slug = {
             "group_summary": "group_summary",
             "individual_detail": "individual_detail",
@@ -460,240 +460,240 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
     def _dismiss_bill_analyzer_modal(self) -> bool:
         """
-        Detecta y cierra el modal de Bill Analyzer si aparece.
-        Este modal puede aparecer al navegar a la seccion de reportes.
-        Retorna True si se cerro el modal o si no aparecio.
+        Detects and closes Bill Analyzer modal if it appears.
+        This modal may appear when navigating to reports section.
+        Returns True if modal was closed or if it didn't appear.
         """
         try:
             modal_button_xpath = "//*[@id='tandc-content']/div[3]/button"
 
-            # Verificar si el modal esta presente (con timeout corto)
+            # Check if modal is present (with short timeout)
             if self.browser_wrapper.is_element_visible(modal_button_xpath, timeout=3000):
-                self.logger.info("Modal Bill Analyzer detectado, cerrando...")
+                self.logger.info("Bill Analyzer modal detected, closing...")
                 self.browser_wrapper.click_element(modal_button_xpath)
                 time.sleep(2)
-                self.logger.info("Modal Bill Analyzer cerrado")
+                self.logger.info("Bill Analyzer modal closed")
                 return True
             else:
-                self.logger.info("Modal Bill Analyzer no detectado, continuando...")
+                self.logger.info("Bill Analyzer modal not detected, continuing...")
                 return True
 
         except Exception as e:
-            self.logger.warning(f"Error manejando modal Bill Analyzer: {str(e)}")
-            return True  # Continuar de todos modos
+            self.logger.warning(f"Error handling Bill Analyzer modal: {str(e)}")
+            return True  # Continue anyway
 
     def _configure_date_selection(self, billing_cycle: BillingCycle):
-        """Configura la seleccion de fecha para los reportes individuales."""
+        """Configures date selection for individual reports."""
         try:
-            # 1. Click en date selection
+            # 1. Click on date selection
             date_selection_xpath = (
                 "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/button[1]"
             )
-            self.logger.info("Click en date selection...")
+            self.logger.info("Clicking on date selection...")
             self.browser_wrapper.click_element(date_selection_xpath)
             time.sleep(2)
 
-            # 2. Configurar dropdown de fecha
+            # 2. Configure date dropdown
             target_period = billing_cycle.end_date.strftime("%B %Y") + " statements"
             select_date_dropdown_xpath = "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/select[1]"
-            self.logger.info(f"Seleccionando periodo: {target_period}")
+            self.logger.info(f"Selecting period: {target_period}")
 
             try:
                 self.browser_wrapper.select_dropdown_option(select_date_dropdown_xpath, target_period)
             except:
-                # Fallback: buscar solo por mes y ano sin "statements"
+                # Fallback: search only by month and year without "statements"
                 fallback_period = billing_cycle.end_date.strftime("%B %Y")
-                self.logger.info(f"Fallback - Seleccionando: {fallback_period}")
+                self.logger.info(f"Fallback - Selecting: {fallback_period}")
                 self.browser_wrapper.select_dropdown_option(select_date_dropdown_xpath, fallback_period)
 
             time.sleep(2)
 
-            # 3. Click en confirm button
+            # 3. Click on confirm button
             confirm_button_xpath = "/html[1]/body[1]/div[2]/form[1]/div[1]/div[1]/div[2]/div[1]/div[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[5]/button[1]"
-            self.logger.info("Click en confirm button...")
+            self.logger.info("Clicking on confirm button...")
             self.browser_wrapper.click_element(confirm_button_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
         except Exception as e:
-            self.logger.error(f"Error configurando fecha: {str(e)}")
+            self.logger.error(f"Error configuring date: {str(e)}")
             raise
 
     def _configure_scope_filter(self, billing_cycle: BillingCycle) -> bool:
         """
-        Configura el filtro de Scope (cuenta) en Telus IQ.
-        Flujo: abrir dropdown, seleccionar Accounts, buscar cuenta, confirmar con OK.
+        Configures Scope (account) filter in Telus IQ.
+        Flow: open dropdown, select Accounts, search account, confirm with OK.
         """
         try:
             target_account = billing_cycle.account.number
-            self.logger.info(f"Configurando Scope filter para cuenta: {target_account}")
+            self.logger.info(f"Configuring Scope filter for account: {target_account}")
 
-            # 1. Click en Scope dropdown button
+            # 1. Click on Scope dropdown button
             scope_button_xpath = "//*[@id='LevelDataDropdownButton']"
-            self.logger.info("Click en Scope dropdown button...")
+            self.logger.info("Clicking on Scope dropdown button...")
             self.browser_wrapper.click_element(scope_button_xpath)
             time.sleep(2)
 
-            # 2. Click en "Accounts" option para mostrar lista de cuentas
+            # 2. Click on "Accounts" option to show account list
             accounts_option_xpath = "//*[@id='LevelDataDropdownList_multipleaccounts']"
-            self.logger.info("Seleccionando opcion 'Accounts'...")
+            self.logger.info("Selecting 'Accounts' option...")
             self.browser_wrapper.click_element(accounts_option_xpath)
             time.sleep(3)
 
-            # 3. Buscar la cuenta en el campo de busqueda o en la lista
+            # 3. Search for account in search field or list
             search_input_xpath = "//input[contains(@placeholder, 'Search') or contains(@class, 'search')]"
             if self.browser_wrapper.find_element_by_xpath(search_input_xpath, timeout=2000):
-                self.logger.info(f"Buscando cuenta: {target_account}")
+                self.logger.info(f"Searching for account: {target_account}")
                 self.browser_wrapper.clear_and_type(search_input_xpath, target_account)
                 time.sleep(2)
 
-            # 4. Buscar y seleccionar la cuenta en la lista
+            # 4. Find and select account in list
             account_option_xpath = f"//*[contains(text(), '{target_account}')]"
             if not self.browser_wrapper.find_element_by_xpath(account_option_xpath):
-                self.logger.error(f"Cuenta {target_account} no encontrada en la lista")
+                self.logger.error(f"Account {target_account} not found in list")
                 return False
 
-            self.logger.info(f"Cuenta {target_account} encontrada, seleccionando...")
+            self.logger.info(f"Account {target_account} found, selecting...")
             self.browser_wrapper.click_element(account_option_xpath)
             time.sleep(2)
 
-            # 5. Click en el checkbox si aparece
+            # 5. Click on checkbox if it appears
             first_item_xpath = "//div[contains(@class, 'checkbox')]//input | //li[contains(@class, 'list-group-item')]//input[@type='checkbox']"
             if self.browser_wrapper.find_element_by_xpath(first_item_xpath, timeout=2000):
                 self.browser_wrapper.click_element(first_item_xpath)
                 time.sleep(1)
 
-            # 6. Click en boton OK para confirmar la seleccion de Scope
+            # 6. Click on OK button to confirm Scope selection
             scope_ok_button_xpath = "//*[@id='scopeExpandedAccountMenu']/div[4]/button"
             if not self.browser_wrapper.find_element_by_xpath(scope_ok_button_xpath, timeout=3000):
-                self.logger.error("Boton OK de Scope no encontrado")
+                self.logger.error("Scope OK button not found")
                 return False
 
-            self.logger.info("Click en boton OK para confirmar Scope...")
+            self.logger.info("Clicking OK button to confirm Scope...")
             self.browser_wrapper.click_element(scope_ok_button_xpath)
             time.sleep(3)
 
-            self.logger.info(f"Scope configurado para cuenta: {target_account}")
+            self.logger.info(f"Scope configured for account: {target_account}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configurando Scope filter: {str(e)}")
+            self.logger.error(f"Error configuring Scope filter: {str(e)}")
             return False
 
     def _configure_date_range_filter(self, billing_cycle: BillingCycle) -> bool:
         """
-        Configura el filtro de Date Range en Telus IQ.
-        Flujo:
-        1. Click en CIDPendingDataDropdownButton para abrir el menu
-        2. Seleccionar directamente por value en bmtype_data (Select2)
-        3. Click en btnApply para confirmar
+        Configures Date Range filter in Telus IQ.
+        Flow:
+        1. Click on CIDPendingDataDropdownButton to open menu
+        2. Select directly by value in bmtype_data (Select2)
+        3. Click on btnApply to confirm
 
-        El value sigue el patron bYYYYMM21 (siempre dia 21)
-        Ejemplo: para noviembre 2025 -> b20251121
+        Value follows pattern bYYYYMM21 (always day 21)
+        Example: for November 2025 -> b20251121
         """
         try:
             target_month = billing_cycle.end_date.month
             target_year = billing_cycle.end_date.year
-            # Construir el value directamente: bYYYYMM21 (siempre dia 21)
+            # Build value directly: bYYYYMM21 (always day 21)
             target_value = f"b{target_year}{target_month:02d}21"
             target_date_text = f"{target_month:02d}-21-{target_year} statement"
 
-            self.logger.info(f"Configurando Date Range filter para: {target_date_text} (value={target_value})")
+            self.logger.info(f"Configuring Date Range filter for: {target_date_text} (value={target_value})")
 
-            # 1. Click en Date Range dropdown button para abrir el menu
+            # 1. Click on Date Range dropdown button to open menu
             date_button_xpath = "//*[@id='CIDPendingDataDropdownButton']"
-            self.logger.info("Click en CIDPendingDataDropdownButton...")
+            self.logger.info("Clicking on CIDPendingDataDropdownButton...")
             self.browser_wrapper.click_element(date_button_xpath)
             time.sleep(2)
 
-            # 2. Seleccionar directamente por value (Select2 component)
+            # 2. Select directly by value (Select2 component)
             bmtype_select_xpath = "//*[@id='bmtype_data']"
-            self.logger.info(f"Seleccionando por value: {target_value}")
+            self.logger.info(f"Selecting by value: {target_value}")
             self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, target_value)
             time.sleep(1)
 
-            # 3. Click en OK para aplicar
+            # 3. Click OK to apply
             if not self._click_date_range_ok_button():
-                self.logger.error("Error aplicando Date Range (boton OK)")
+                self.logger.error("Error applying Date Range (OK button)")
                 return False
 
-            self.logger.info(f"Date Range configurado exitosamente: {target_date_text}")
+            self.logger.info(f"Date Range configured successfully: {target_date_text}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configurando Date Range filter: {str(e)}")
+            self.logger.error(f"Error configuring Date Range filter: {str(e)}")
             return False
 
     def _click_date_range_ok_button(self) -> bool:
-        """Click en el boton OK/Apply para confirmar la seleccion de fecha."""
+        """Click on OK/Apply button to confirm date selection."""
         try:
             ok_button_xpath = "//*[@id='btnApply']"
             if self.browser_wrapper.find_element_by_xpath(ok_button_xpath, timeout=2000):
-                self.logger.info("Click en boton OK para aplicar Date Range...")
+                self.logger.info("Clicking OK button to apply Date Range...")
                 self.browser_wrapper.click_element(ok_button_xpath)
                 time.sleep(3)
                 return True
             return False
         except Exception as e:
-            self.logger.warning(f"Error clickeando boton OK: {str(e)}")
+            self.logger.warning(f"Error clicking OK button: {str(e)}")
             return False
 
     def _download_individual_reports(self, billing_cycle: BillingCycle, file_map: dict) -> List[FileDownloadInfo]:
         """
-        Descarga el reporte Mobility Device Summary desde Summary Reports.
-        Flujo similar a ATT:
-        1. Configurar Scope (cuenta) filter
-        2. Configurar Date Range filter
-        3. Buscar seccion "Mobility Device Summary" en el accordion
-        4. Click en el reporte "Mobility Device Summary Report"
-        5. Descargar el reporte
+        Downloads Mobility Device Summary report from Summary Reports.
+        Flow similar to ATT:
+        1. Configure Scope (account) filter
+        2. Configure Date Range filter
+        3. Find "Mobility Device Summary" section in accordion
+        4. Click on "Mobility Device Summary Report"
+        5. Download report
         """
         downloaded_files = []
 
         try:
-            self.logger.info("=== DESCARGANDO MOBILITY DEVICE SUMMARY ===")
+            self.logger.info("=== DOWNLOADING MOBILITY DEVICE SUMMARY ===")
 
-            # 1. Configurar Scope filter (cuenta)
-            self.logger.info("Configurando filtro de Scope...")
+            # 1. Configure Scope filter (account)
+            self.logger.info("Configuring Scope filter...")
             if not self._configure_scope_filter(billing_cycle):
-                self.logger.error("No se pudo configurar Scope filter - archivo marcado como fallido")
+                self.logger.error("Could not configure Scope filter - file marked as failed")
                 return downloaded_files
             time.sleep(3)
 
-            # 2. Configurar Date Range filter (OBLIGATORIO - sin fallback)
-            self.logger.info("Configurando filtro de Date Range...")
+            # 2. Configure Date Range filter (REQUIRED - no fallback)
+            self.logger.info("Configuring Date Range filter...")
             if not self._configure_date_range_filter(billing_cycle):
-                self.logger.error("No se pudo configurar Date Range filter - archivo marcado como fallido")
+                self.logger.error("Could not configure Date Range filter - file marked as failed")
                 return downloaded_files
             time.sleep(3)
 
-            # 3. Buscar y expandir la seccion "Mobility Device Summary" en el accordion
-            # El accordion tiene id="accordion" y la seccion Mobility Device Summary tiene id="collapse42"
+            # 3. Find and expand "Mobility Device Summary" section in accordion
+            # Accordion has id="accordion" and Mobility Device Summary section has id="collapse42"
             mobility_section_header_xpath = "//*[@id='heading42']"
             mobility_section_collapse_xpath = "//*[@id='collapse42']"
 
-            # Verificar si la seccion existe
+            # Check if section exists
             if not self.browser_wrapper.find_element_by_xpath(mobility_section_header_xpath):
-                self.logger.error("Seccion 'Mobility Device Summary' no encontrada en el accordion")
+                self.logger.error("'Mobility Device Summary' section not found in accordion")
                 return downloaded_files
 
-            self.logger.info("Seccion 'Mobility Device Summary' encontrada")
+            self.logger.info("'Mobility Device Summary' section found")
 
-            # Verificar si la seccion esta colapsada y expandirla si es necesario
-            # Buscar el boton de toggle en el header
+            # Check if section is collapsed and expand if needed
+            # Find toggle button in header
             toggle_button_xpath = "//*[@id='heading42']//button[@data-toggle='collapse']"
             if self.browser_wrapper.find_element_by_xpath(toggle_button_xpath):
-                # Verificar si esta colapsada (aria-expanded="false")
+                # Check if collapsed (aria-expanded="false")
                 is_collapsed = self.browser_wrapper.get_attribute(toggle_button_xpath, "aria-expanded")
                 if is_collapsed == "false":
-                    self.logger.info("Expandiendo seccion 'Mobility Device Summary'...")
+                    self.logger.info("Expanding 'Mobility Device Summary' section...")
                     self.browser_wrapper.click_element(toggle_button_xpath)
                     time.sleep(2)
 
-            # 4. Buscar el reporte "Mobility Device Summary Report" dentro de la seccion
-            # Buscar cualquier boton con btnSelectSummaryReport que contenga "Mobility Device"
+            # 4. Find "Mobility Device Summary Report" within section
+            # Search for any button with btnSelectSummaryReport containing "Mobility Device"
             mobility_report_xpath = "//*[@id='collapse42']//button[contains(@id, 'btnSelectSummaryReport')][contains(., 'Mobility Device')]"
-            # Alternativa: buscar por texto parcial
+            # Alternative: search by partial text
             mobility_report_alt_xpath = "//*[@id='collapse42']//button[contains(text(), 'Mobility Device')]"
 
             report_found = False
@@ -707,56 +707,56 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 report_found = True
 
             if not report_found:
-                self.logger.error("Reporte 'Mobility Device Summary Report' no encontrado en Mobility Device Summary section")
+                self.logger.error("'Mobility Device Summary Report' not found in Mobility Device Summary section")
                 return downloaded_files
 
-            # Verificar el texto del boton
+            # Verify button text
             button_text = self.browser_wrapper.get_text(report_xpath_to_use)
-            self.logger.info(f"Reporte encontrado: {button_text}")
+            self.logger.info(f"Report found: {button_text}")
 
             corresponding_bcf = file_map.get("mobility_device")
             if corresponding_bcf:
-                self.logger.info(f"Usando BillingCycleFile ID {corresponding_bcf.id} para mobility_device")
+                self.logger.info(f"Using BillingCycleFile ID {corresponding_bcf.id} for mobility_device")
 
-            # 5. Click en el reporte para abrir la vista del reporte
-            self.logger.info("Click en reporte 'Mobility Device Summary Report'...")
+            # 5. Click on report to open report view
+            self.logger.info("Clicking on 'Mobility Device Summary Report'...")
             self.browser_wrapper.click_element(report_xpath_to_use)
-            self.logger.info("Esperando 1 minuto para que cargue el reporte...")
+            self.logger.info("Waiting 1 minute for report to load...")
             time.sleep(60)
 
-            # 6. Click en boton Export/Download
+            # 6. Click on Export/Download button
             export_button_xpath = "//*[@id='export']"
             if not self.browser_wrapper.find_element_by_xpath(export_button_xpath, timeout=10000):
-                self.logger.error("Boton Export no encontrado")
+                self.logger.error("Export button not found")
                 return downloaded_files
 
-            self.logger.info("Click en boton Export...")
+            self.logger.info("Clicking on Export button...")
             self.browser_wrapper.click_element(export_button_xpath)
             time.sleep(3)
 
-            # 7. Seleccionar formato CSV
+            # 7. Select CSV format
             csv_label_xpath = "//*[@id='radCsvLabel']"
             if self.browser_wrapper.find_element_by_xpath(csv_label_xpath, timeout=5000):
-                self.logger.info("Seleccionando formato CSV...")
+                self.logger.info("Selecting CSV format...")
                 self.browser_wrapper.click_element(csv_label_xpath)
                 time.sleep(1)
             else:
-                self.logger.warning("Label CSV no encontrado, continuando...")
+                self.logger.warning("CSV label not found, continuing...")
 
-            # 8. Click en boton OK para descargar
+            # 8. Click on OK button to download
             ok_button_xpath = "//*[@id='hrefOK']"
             if not self.browser_wrapper.find_element_by_xpath(ok_button_xpath, timeout=5000):
-                self.logger.error("Boton OK no encontrado")
+                self.logger.error("OK button not found")
                 return downloaded_files
 
-            self.logger.info("Click en boton OK para descargar...")
+            self.logger.info("Clicking on OK button to download...")
             downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                 ok_button_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
             )
 
             if downloaded_file_path:
                 actual_filename = os.path.basename(downloaded_file_path)
-                self.logger.info(f"Mobility Device descargado: {actual_filename}")
+                self.logger.info(f"Mobility Device downloaded: {actual_filename}")
 
                 file_info = FileDownloadInfo(
                     file_id=corresponding_bcf.id if corresponding_bcf else len(downloaded_files) + 1,
@@ -768,24 +768,24 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 downloaded_files.append(file_info)
 
                 if corresponding_bcf:
-                    self.logger.info(f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
+                    self.logger.info(f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
             else:
-                self.logger.error("No se pudo descargar el reporte Mobility Device")
+                self.logger.error("Could not download Mobility Device report")
 
             time.sleep(5)
 
         except Exception as e:
-            self.logger.error(f"Error descargando Mobility Device Summary: {str(e)}")
+            self.logger.error(f"Error downloading Mobility Device Summary: {str(e)}")
 
         return downloaded_files
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de Telus usando My Telus."""
+        """Reset to Telus main screen using My Telus."""
         try:
-            self.logger.info("Reseteando a My Telus...")
+            self.logger.info("Resetting to My Telus...")
             self.browser_wrapper.goto("https://www.telus.com/my-telus")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            self.logger.info("Reset completado")
+            self.logger.info("Reset completed")
         except Exception as e:
-            self.logger.error(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error in reset: {str(e)}")

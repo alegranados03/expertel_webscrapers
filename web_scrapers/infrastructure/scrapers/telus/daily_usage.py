@@ -17,111 +17,111 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
-    """Scraper de uso diario para Telus.
+    """Daily usage scraper for Telus.
 
-    Este scraper:
-    1. Navega a la tab de Usage para obtener pool_size y pool_used
-    2. Navega a Telus IQ via Overview
-    3. Genera y descarga el Daily Usage Report
+    This scraper:
+    1. Navigates to Usage tab to get pool_size and pool_used
+    2. Navigates to Telus IQ via Overview
+    3. Generates and downloads the Daily Usage Report
     """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.pool_size: Optional[int] = None  # En bytes
-        self.pool_used: Optional[int] = None  # En bytes
+        self.pool_size: Optional[int] = None  # In bytes
+        self.pool_used: Optional[int] = None  # In bytes
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de uso diario en Telus y obtiene datos del pool."""
+        """Navigates to daily usage section in Telus and gets pool data."""
         try:
-            self.logger.info("=== INICIANDO TELUS DAILY USAGE SCRAPER ===")
+            self.logger.info("=== STARTING TELUS DAILY USAGE SCRAPER ===")
 
-            # 1. Verificar que estamos en My Telus
+            # 1. Verify we are in My Telus
             current_url = self.browser_wrapper.get_current_url()
             if "my-telus" not in current_url:
-                self.logger.info("Navegando a My Telus...")
+                self.logger.info("Navigating to My Telus...")
                 self.browser_wrapper.goto("https://www.telus.com/my-telus")
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(5)
 
-            # 2. Click en la tab de Usage
+            # 2. Click on Usage tab
             usage_tab_xpath = '//*[@id="navOpen"]/li[3]/a'
-            self.logger.info("Click en tab de Usage...")
+            self.logger.info("Clicking on Usage tab...")
             self.browser_wrapper.click_element(usage_tab_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
-            # 3. Manejar posible pantalla "Find your account"
+            # 3. Handle possible "Find your account" screen
             if not self._handle_account_selection(billing_cycle):
-                self.logger.error("Fallo en seleccion de cuenta - abortando scraper")
+                self.logger.error("Account selection failed - aborting scraper")
                 return None
 
-            # 4. Verificar que la cuenta actual es la correcta
+            # 4. Verify current account is correct
             if not self._verify_current_account(billing_cycle):
-                self.logger.error("Fallo en verificacion de cuenta - abortando scraper")
+                self.logger.error("Account verification failed - aborting scraper")
                 return None
 
             time.sleep(3)
 
-            # 5. Extraer pool_size y pool_used
+            # 5. Extract pool_size and pool_used
             pool_data = self._extract_pool_data()
             if pool_data:
                 self.pool_used, self.pool_size = pool_data
-                self.logger.info(f"Pool data extraido: used={self.pool_used} bytes, size={self.pool_size} bytes")
+                self.logger.info(f"Pool data extracted: used={self.pool_used} bytes, size={self.pool_size} bytes")
             else:
-                self.logger.warning("No se pudo extraer pool data, continuando sin datos de pool...")
+                self.logger.warning("Could not extract pool data, continuing without pool data...")
 
-            # 6. Navegar a Overview tab
+            # 6. Navigate to Overview tab
             overview_tab_xpath = '//*[@id="navOpen"]/li[1]/a'
-            self.logger.info("Click en tab de Overview...")
+            self.logger.info("Clicking on Overview tab...")
             self.browser_wrapper.click_element(overview_tab_xpath)
             self.browser_wrapper.wait_for_page_load()
             time.sleep(5)
 
-            # 7. Click en "Go to Telus IQ"
+            # 7. Click on "Go to Telus IQ"
             telus_iq_button_xpath = (
                 "/html/body/div[5]/div/div/div/div[1]/div/div[3]/div/div/div/div/div/div/div[3]/div/div/a"
             )
-            self.logger.info("Click en 'Go to Telus IQ' button...")
+            self.logger.info("Clicking on 'Go to Telus IQ' button...")
             self.browser_wrapper.click_element(telus_iq_button_xpath)
-            self.logger.info("Esperando 30 segundos para cargar Telus IQ...")
+            self.logger.info("Waiting 30 seconds for Telus IQ to load...")
             time.sleep(30)
 
-            # 8. Manejar modal de Bill Analyzer si aparece
+            # 8. Handle Bill Analyzer modal if it appears
             self._dismiss_bill_analyzer_modal()
 
-            # 9. Click en Manage tab
+            # 9. Click on Manage tab
             manage_tab_xpath = '//*[@id="site-header__root"]/div[1]/div/div/div/div/ul[1]/li[2]/a'
-            self.logger.info("Click en Manage tab...")
+            self.logger.info("Clicking on Manage tab...")
             self.browser_wrapper.click_element(manage_tab_xpath)
             time.sleep(3)
 
-            # 10. Click en Usage View option
+            # 10. Click on Usage View option
             usage_view_xpath = '//*[@id="site-header__root"]/div[2]/div/div/div/div/div[2]/div[1]/div[3]/div/a'
-            self.logger.info("Verificando opcion 'Usage view'...")
+            self.logger.info("Verifying 'Usage view' option...")
 
-            # Validar que efectivamente diga "Usage view"
+            # Validate it actually says "Usage view"
             if self.browser_wrapper.find_element_by_xpath(usage_view_xpath, timeout=5000):
                 link_text = self.browser_wrapper.get_text(usage_view_xpath)
                 if "Usage view" in link_text:
-                    self.logger.info("Click en 'Usage view' option...")
+                    self.logger.info("Clicking on 'Usage view' option...")
                     self.browser_wrapper.click_element(usage_view_xpath)
                 else:
-                    self.logger.warning(f"Texto inesperado en enlace: '{link_text}', intentando click de todos modos...")
+                    self.logger.warning(f"Unexpected text in link: '{link_text}', attempting click anyway...")
                     self.browser_wrapper.click_element(usage_view_xpath)
             else:
-                self.logger.error("Opcion 'Usage view' no encontrada")
+                self.logger.error("'Usage view' option not found")
                 return None
 
-            self.logger.info("Esperando 15 segundos para cargar Usage View...")
+            self.logger.info("Waiting 15 seconds for Usage View to load...")
             time.sleep(15)
 
-            # 11. Configurar busqueda avanzada con el BAN
+            # 11. Configure advanced search with BAN
             if not self._configure_advanced_search(billing_cycle):
-                self.logger.error("Fallo en configuracion de busqueda avanzada")
+                self.logger.error("Advanced search configuration failed")
                 return None
 
-            self.logger.info("Navegacion a seccion de uso diario completada")
+            self.logger.info("Navigation to daily usage section completed")
             return {
                 "section": "daily_usage",
                 "ready_for_export": True,
@@ -130,118 +130,118 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             }
 
         except Exception as e:
-            self.logger.error(f"Error navegando a seccion de uso diario: {str(e)}")
+            self.logger.error(f"Error navigating to daily usage section: {str(e)}")
             return None
 
     def _handle_account_selection(self, billing_cycle: BillingCycle) -> bool:
-        """Maneja la pantalla de seleccion de cuenta si aparece."""
+        """Handles account selection screen if it appears."""
         try:
-            # Verificar si estamos en la pantalla "Find your account"
+            # Check if we are on "Find your account" screen
             find_account_header_xpath = (
                 "//*[@id='__next']/div/div[1]/div/div/div/div[1]/div/div[2]/div/div/div/div[1]/div/h1"
             )
 
             header_element = self.browser_wrapper.find_element_by_xpath(find_account_header_xpath, timeout=3000)
             if not header_element:
-                self.logger.info("No se encontro pantalla de seleccion de cuenta, continuando...")
+                self.logger.info("Account selection screen not found, continuing...")
                 return True
 
             header_text = self.browser_wrapper.get_text(find_account_header_xpath)
             if "Find your account" not in header_text:
-                self.logger.info(f"Header encontrado pero texto diferente: '{header_text}', continuando...")
+                self.logger.info(f"Header found but different text: '{header_text}', continuing...")
                 return True
 
-            self.logger.info("Pantalla 'Find your account' detectada - seleccionando cuenta correcta...")
+            self.logger.info("'Find your account' screen detected - selecting correct account...")
             return self._select_account_from_list(billing_cycle)
 
         except Exception as e:
-            self.logger.error(f"Error manejando seleccion de cuenta: {str(e)}")
+            self.logger.error(f"Error handling account selection: {str(e)}")
             return False
 
     def _select_account_from_list(self, billing_cycle: BillingCycle) -> bool:
-        """Selecciona la cuenta correcta de la lista de cuentas disponibles."""
+        """Selects the correct account from the available accounts list."""
         try:
             target_account_number = billing_cycle.account.number
-            self.logger.info(f"Buscando cuenta: {target_account_number}")
+            self.logger.info(f"Searching for account: {target_account_number}")
 
-            # Buscar el div que contiene el numero de cuenta especifico
+            # Search for div containing the specific account number
             account_number_xpath = (
                 f"//div[@data-testid='account-card-north-star']//div[contains(text(), '{target_account_number}')]"
             )
 
             if self.browser_wrapper.find_element_by_xpath(account_number_xpath, timeout=5000):
-                self.logger.info(f"Cuenta {target_account_number} encontrada, haciendo click...")
+                self.logger.info(f"Account {target_account_number} found, clicking...")
                 target_card_xpath = (
                     f"//div[@data-testid='account-card-north-star'][.//div[contains(text(), '{target_account_number}')]]"
                 )
                 self.browser_wrapper.click_element(target_card_xpath)
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
-                self.logger.info(f"Cuenta {target_account_number} seleccionada exitosamente")
+                self.logger.info(f"Account {target_account_number} selected successfully")
                 return True
             else:
-                self.logger.error(f"Cuenta {target_account_number} NO encontrada en la lista")
+                self.logger.error(f"Account {target_account_number} NOT found in the list")
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error seleccionando cuenta de la lista: {str(e)}")
+            self.logger.error(f"Error selecting account from list: {str(e)}")
             return False
 
     def _verify_current_account(self, billing_cycle: BillingCycle) -> bool:
-        """Verifica que la cuenta actualmente seleccionada sea la correcta."""
+        """Verifies that the currently selected account is correct."""
         try:
             target_account_number = billing_cycle.account.number
-            self.logger.info(f"Verificando cuenta actual vs objetivo: {target_account_number}")
+            self.logger.info(f"Verifying current account vs target: {target_account_number}")
 
-            # Buscar el elemento que muestra el numero de cuenta actual
+            # Search for element showing current account number
             account_number_xpath = '//*[@data-testid="accountNumber"]'
 
             if not self.browser_wrapper.find_element_by_xpath(account_number_xpath, timeout=5000):
-                self.logger.info("No se encontro elemento de numero de cuenta, continuando...")
+                self.logger.info("Account number element not found, continuing...")
                 return True
 
             current_account = self.browser_wrapper.get_text(account_number_xpath)
-            self.logger.info(f"Cuenta actual: '{current_account}'")
+            self.logger.info(f"Current account: '{current_account}'")
 
             if target_account_number in current_account or current_account in target_account_number:
-                self.logger.info(f"Cuenta correcta confirmada: {target_account_number}")
+                self.logger.info(f"Correct account confirmed: {target_account_number}")
                 return True
 
-            # La cuenta no coincide, necesitamos cambiarla
-            self.logger.info(f"Cuenta incorrecta. Esperado: {target_account_number}, Actual: {current_account}")
-            self.logger.info("Buscando enlace 'Change account'...")
+            # Account doesn't match, need to change it
+            self.logger.info(f"Incorrect account. Expected: {target_account_number}, Actual: {current_account}")
+            self.logger.info("Searching for 'Change account' link...")
 
-            # Buscar el enlace "Change account"
+            # Search for "Change account" link
             change_account_xpath = '//*[@data-testid="link"]//div[contains(text(), "Change account")]'
             change_account_parent_xpath = '//*[@data-testid="link"]'
 
             if self.browser_wrapper.find_element_by_xpath(change_account_xpath, timeout=3000):
-                self.logger.info("Click en 'Change account'...")
+                self.logger.info("Clicking on 'Change account'...")
                 self.browser_wrapper.click_element(change_account_parent_xpath)
                 self.browser_wrapper.wait_for_page_load()
                 time.sleep(5)
                 return self._select_account_from_list(billing_cycle)
             else:
-                self.logger.error("No se encontro enlace 'Change account'")
+                self.logger.error("'Change account' link not found")
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error verificando cuenta actual: {str(e)}")
-            return True  # Continuar si hay error
+            self.logger.error(f"Error verifying current account: {str(e)}")
+            return True  # Continue if there's an error
 
     def _extract_pool_data(self) -> Optional[Tuple[int, int]]:
-        """Extrae pool_used y pool_size del div de uso y los convierte a bytes."""
+        """Extracts pool_used and pool_size from usage div and converts to bytes."""
         try:
-            self.logger.info("Extrayendo datos de pool...")
+            self.logger.info("Extracting pool data...")
 
-            # XPath del div que contiene los datos de uso
+            # XPath of div containing usage data
             usage_container_xpath = '//*[@id="app"]/div[2]/div/div/div/div[3]/div[7]/div/div[2]/div/div[3]/div/div/div[5]'
 
             if not self.browser_wrapper.find_element_by_xpath(usage_container_xpath, timeout=5000):
-                self.logger.warning("Contenedor de uso no encontrado")
+                self.logger.warning("Usage container not found")
                 return None
 
-            # Extraer valores individuales usando data-testid
+            # Extract individual values using data-testid
             usage_used_xpath = '//*[@data-testid="usage-used"]'
             usage_allowance_xpath = '//*[@data-testid="usage-allowance"]'
 
@@ -257,10 +257,10 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 self.logger.info(f"Usage allowance raw: '{pool_size_text}'")
 
             if not pool_used_text or not pool_size_text:
-                self.logger.warning("No se pudieron extraer valores de uso")
+                self.logger.warning("Could not extract usage values")
                 return None
 
-            # Parsear valores y convertir a bytes
+            # Parse values and convert to bytes
             pool_used_bytes = self._parse_gb_to_bytes(pool_used_text)
             pool_size_bytes = self._parse_gb_to_bytes(pool_size_text)
 
@@ -269,191 +269,191 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 self.logger.info(f"Pool size: {pool_size_bytes} bytes ({pool_size_text})")
                 return (pool_used_bytes, pool_size_bytes)
             else:
-                self.logger.warning("Error parseando valores de pool")
+                self.logger.warning("Error parsing pool values")
                 return None
 
         except Exception as e:
-            self.logger.error(f"Error extrayendo datos de pool: {str(e)}")
+            self.logger.error(f"Error extracting pool data: {str(e)}")
             return None
 
     def _parse_gb_to_bytes(self, value_text: str) -> Optional[int]:
-        """Parsea un valor de GB a bytes."""
+        """Parses a GB value to bytes."""
         try:
-            # Limpiar el texto y extraer el numero
-            # Ejemplos: "47.13", "601 GB", "47.13 GB"
+            # Clean text and extract number
+            # Examples: "47.13", "601 GB", "47.13 GB"
             cleaned = value_text.strip().replace(",", "")
 
-            # Extraer solo el numero (puede tener decimales)
+            # Extract only the number (may have decimals)
             match = re.search(r"([\d.]+)", cleaned)
             if not match:
                 return None
 
             value = float(match.group(1))
 
-            # Convertir GB a bytes (1 GB = 1024^3 bytes)
+            # Convert GB to bytes (1 GB = 1024^3 bytes)
             bytes_value = int(value * (1024 ** 3))
             return bytes_value
 
         except Exception as e:
-            self.logger.error(f"Error parseando '{value_text}' a bytes: {str(e)}")
+            self.logger.error(f"Error parsing '{value_text}' to bytes: {str(e)}")
             return None
 
     def _dismiss_bill_analyzer_modal(self) -> bool:
-        """Detecta y cierra el modal de Bill Analyzer si aparece."""
+        """Detects and closes Bill Analyzer modal if it appears."""
         try:
-            # Buscar el boton "don't show again" del modal de Bill Analyzer
+            # Search for "don't show again" button in Bill Analyzer modal
             dont_show_again_xpath = (
                 "/html/body/div[1]/html/body/div/div/div/div[2]/div/div[2]/div[2]/div[1]/div/div/div[3]/div/div[2]/p/div/a"
             )
 
             if self.browser_wrapper.find_element_by_xpath(dont_show_again_xpath, timeout=5000):
-                self.logger.info("Modal Bill Analyzer detectado, cerrando...")
+                self.logger.info("Bill Analyzer modal detected, closing...")
                 self.browser_wrapper.click_element(dont_show_again_xpath)
                 time.sleep(2)
-                self.logger.info("Modal Bill Analyzer cerrado")
+                self.logger.info("Bill Analyzer modal closed")
                 return True
             else:
-                self.logger.info("Modal Bill Analyzer no detectado, continuando...")
+                self.logger.info("Bill Analyzer modal not detected, continuing...")
                 return True
 
         except Exception as e:
-            self.logger.warning(f"Error manejando modal Bill Analyzer: {str(e)}")
-            return True  # Continuar de todos modos
+            self.logger.warning(f"Error handling Bill Analyzer modal: {str(e)}")
+            return True  # Continue anyway
 
     def _configure_advanced_search(self, billing_cycle: BillingCycle) -> bool:
-        """Configura la busqueda avanzada con el BAN de la cuenta."""
+        """Configures advanced search with account BAN."""
         try:
             target_account = billing_cycle.account.number
-            self.logger.info(f"Configurando busqueda avanzada para cuenta: {target_account}")
+            self.logger.info(f"Configuring advanced search for account: {target_account}")
 
-            # 1. Click en Advanced search toggle
+            # 1. Click on Advanced search toggle
             advanced_toggle_xpath = '//*[@id="advanced__search__toggle"]'
-            self.logger.info("Click en Advanced search toggle...")
+            self.logger.info("Clicking on Advanced search toggle...")
             self.browser_wrapper.click_element(advanced_toggle_xpath)
             time.sleep(2)
 
-            # 2. Verificar que el panel de busqueda avanzada esta abierto
+            # 2. Verify advanced search panel is open
             advanced_panel_xpath = '//*[@id="advanced__search"]'
             if not self.browser_wrapper.find_element_by_xpath(advanced_panel_xpath, timeout=5000):
-                self.logger.error("Panel de busqueda avanzada no se abrio")
+                self.logger.error("Advanced search panel did not open")
                 return False
 
-            self.logger.info("Panel de busqueda avanzada abierto")
+            self.logger.info("Advanced search panel opened")
 
-            # 3. Seleccionar "Account number (BAN)" en el primer dropdown
+            # 3. Select "Account number (BAN)" in first dropdown
             filter_select_xpath = '//*[@id="advancedsearchselect"]'
-            self.logger.info("Seleccionando 'Account number (BAN)' en dropdown de filtro...")
+            self.logger.info("Selecting 'Account number (BAN)' in filter dropdown...")
             self.browser_wrapper.select_dropdown_by_value(filter_select_xpath, "accountnum")
             time.sleep(2)
 
-            # 4. Seleccionar el numero de cuenta en el segundo dropdown
+            # 4. Select account number in second dropdown
             account_input_xpath = '//*[@id="advancedsearchinput"]'
-            self.logger.info(f"Seleccionando cuenta {target_account} en dropdown de valor...")
+            self.logger.info(f"Selecting account {target_account} in value dropdown...")
             self.browser_wrapper.select_dropdown_by_value(account_input_xpath, target_account)
             time.sleep(2)
 
-            # 5. Click en boton Add
+            # 5. Click on Add button
             add_button_xpath = "//a[contains(@class, 'advanced__search__button')]"
-            self.logger.info("Click en boton Add...")
+            self.logger.info("Clicking on Add button...")
             self.browser_wrapper.click_element(add_button_xpath)
             time.sleep(2)
 
-            # 6. Click en boton Show results
+            # 6. Click on Show results button
             show_results_xpath = "//button[contains(@class, 'show__result__button')]"
-            self.logger.info("Click en boton Show results...")
+            self.logger.info("Clicking on Show results button...")
 
-            # Verificar que el boton no esta deshabilitado
+            # Verify button is not disabled
             if self.browser_wrapper.find_element_by_xpath(show_results_xpath, timeout=3000):
-                # Verificar si tiene la clase 'disabled'
+                # Check if it has 'disabled' class
                 button_class = self.browser_wrapper.get_attribute(show_results_xpath, "class")
                 if "disabled" not in button_class:
                     self.browser_wrapper.click_element(show_results_xpath)
-                    self.logger.info("Esperando resultados...")
+                    self.logger.info("Waiting for results...")
                     time.sleep(10)
                 else:
-                    self.logger.warning("Boton Show results esta deshabilitado, continuando...")
+                    self.logger.warning("Show results button is disabled, continuing...")
 
-            self.logger.info("Busqueda avanzada configurada exitosamente")
+            self.logger.info("Advanced search configured successfully")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configurando busqueda avanzada: {str(e)}")
+            self.logger.error(f"Error configuring advanced search: {str(e)}")
             return False
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga los archivos de uso diario de Telus IQ."""
+        """Downloads daily usage files from Telus IQ."""
         downloaded_files = []
 
-        # Obtener el BillingCycleDailyUsageFile del billing_cycle
+        # Get BillingCycleDailyUsageFile from billing_cycle
         daily_usage_file = billing_cycle.daily_usage_files[0] if billing_cycle.daily_usage_files else None
         if daily_usage_file:
-            self.logger.info(f"Mapeando archivo Daily Usage -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
+            self.logger.info(f"Mapping Daily Usage file -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
 
         try:
-            self.logger.info("=== INICIANDO PROCESO DE EXPORTACION ===")
+            self.logger.info("=== STARTING EXPORT PROCESS ===")
 
-            # 1. Click en Export View button
+            # 1. Click on Export View button
             export_view_xpath = (
                 '//*[@id="app"]/html/body/div/div/div/div[2]/div[3]/div[1]/div[11]/div[2]/div/div[2]/div/div[2]'
             )
-            # XPath alternativo mas especifico
+            # More specific alternative XPath
             export_view_alt_xpath = "//div[contains(@class, 'export')]//div[contains(text(), 'Export')]"
 
-            self.logger.info("Buscando boton Export View...")
+            self.logger.info("Searching for Export View button...")
             if self.browser_wrapper.find_element_by_xpath(export_view_xpath, timeout=5000):
-                self.logger.info("Click en Export View button...")
+                self.logger.info("Clicking on Export View button...")
                 self.browser_wrapper.click_element(export_view_xpath)
             elif self.browser_wrapper.find_element_by_xpath(export_view_alt_xpath, timeout=3000):
-                self.logger.info("Click en Export View button (alternativo)...")
+                self.logger.info("Clicking on Export View button (alternative)...")
                 self.browser_wrapper.click_element(export_view_alt_xpath)
             else:
-                self.logger.error("Boton Export View no encontrado")
+                self.logger.error("Export View button not found")
                 return downloaded_files
 
             time.sleep(3)
 
-            # 2. Generar nombre del reporte: "Daily Usage Report" + fecha mm-dd-yyyy
+            # 2. Generate report name: "Daily Usage Report" + date mm-dd-yyyy
             current_date = datetime.now()
             report_name = f"Daily Usage Report {current_date.strftime('%m-%d-%Y')}"
-            self.logger.info(f"Nombre del reporte: {report_name}")
+            self.logger.info(f"Report name: {report_name}")
 
-            # 3. Escribir en el input del modal
+            # 3. Write in modal input
             report_input_xpath = '//*[@id="reportname"]'
             if self.browser_wrapper.find_element_by_xpath(report_input_xpath, timeout=5000):
-                self.logger.info("Escribiendo nombre del reporte...")
+                self.logger.info("Writing report name...")
                 self.browser_wrapper.clear_and_type(report_input_xpath, report_name)
                 time.sleep(1)
             else:
-                self.logger.error("Input de nombre de reporte no encontrado")
+                self.logger.error("Report name input not found")
                 return downloaded_files
 
-            # 4. Click en Continue button
+            # 4. Click on Continue button
             continue_button_xpath = '//*[@id="confirmation__dialog1"]/div/div[2]/a[2]'
-            self.logger.info("Click en Continue button...")
+            self.logger.info("Clicking on Continue button...")
             self.browser_wrapper.click_element(continue_button_xpath)
-            self.logger.info("Esperando 3 minutos para generacion del reporte...")
+            self.logger.info("Waiting 3 minutes for report generation...")
             time.sleep(180)
 
-            # 5. Monitorear tabla de resultados y descargar
-            # Pasamos el account number para validar BAN en la tabla
+            # 5. Monitor results table and download
+            # Pass account number to validate BAN in table
             target_account = billing_cycle.account.number
             download_info = self._monitor_results_table_and_download(report_name, daily_usage_file, target_account)
 
             if download_info:
                 downloaded_files.append(download_info)
-                self.logger.info(f"Reporte descargado: {download_info.file_name}")
+                self.logger.info(f"Report downloaded: {download_info.file_name}")
             else:
-                self.logger.error("No se pudo descargar el reporte")
+                self.logger.error("Could not download report")
 
-            # 6. Reset a pantalla principal
+            # 6. Reset to main screen
             self._reset_to_main_screen()
 
             return downloaded_files
 
         except Exception as e:
-            self.logger.error(f"Error en descarga de uso diario: {str(e)}")
+            self.logger.error(f"Error in daily usage download: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
@@ -463,59 +463,59 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
     def _monitor_results_table_and_download(
         self, report_name: str, daily_usage_file, target_account: str
     ) -> Optional[FileDownloadInfo]:
-        """Monitorea la tabla de resultados y descarga cuando este listo.
+        """Monitors results table and downloads when ready.
 
         Args:
-            report_name: Nombre del reporte a buscar
-            daily_usage_file: Archivo de daily usage para mapeo
-            target_account: Numero de cuenta (BAN) para validar
+            report_name: Report name to search for
+            daily_usage_file: Daily usage file for mapping
+            target_account: Account number (BAN) to validate
         """
-        max_attempts = 2  # Maximo 2 intentos (3 min + 3 min = 6 min total)
+        max_attempts = 2  # Maximum 2 attempts (3 min + 3 min = 6 min total)
         attempt = 0
 
         while attempt < max_attempts:
             try:
                 attempt += 1
-                self.logger.info(f"Intento {attempt}/{max_attempts} - Verificando tabla de resultados...")
+                self.logger.info(f"Attempt {attempt}/{max_attempts} - Checking results table...")
 
-                # Verificar si existe la tabla dinamica
+                # Check if dynamic table exists
                 dynamic_table_xpath = '//*[@id="dynamicTable"]'
 
                 if not self.browser_wrapper.find_element_by_xpath(dynamic_table_xpath, timeout=10000):
-                    self.logger.info("Tabla dinamica no encontrada, esperando 3 minutos mas...")
+                    self.logger.info("Dynamic table not found, waiting 3 more minutes...")
                     time.sleep(180)
                     continue
 
-                self.logger.info("Tabla dinamica encontrada")
+                self.logger.info("Dynamic table found")
 
-                # Buscar la fila correcta: nombre + BAN + fecha mas reciente
+                # Find correct row: name + BAN + most recent date
                 report_row = self._find_best_report_row(report_name, target_account)
 
                 if not report_row:
-                    self.logger.info(f"Reporte '{report_name}' con BAN '{target_account}' no encontrado, esperando 3 minutos mas...")
+                    self.logger.info(f"Report '{report_name}' with BAN '{target_account}' not found, waiting 3 more minutes...")
                     time.sleep(180)
                     continue
 
-                self.logger.info(f"Reporte '{report_name}' encontrado en fila {report_row}")
+                self.logger.info(f"Report '{report_name}' found in row {report_row}")
 
-                # Verificar el estado (columna 3 - Status)
+                # Check status (column 3 - Status)
                 download_link = self._get_download_link_for_report(report_row)
 
                 if download_link:
                     link_text = self.browser_wrapper.get_text(download_link)
-                    self.logger.info(f"Estado del reporte: {link_text}")
+                    self.logger.info(f"Report status: {link_text}")
 
                     if "Download" in link_text:
-                        self.logger.info("Reporte listo para descarga!")
+                        self.logger.info("Report ready for download!")
 
-                        # Descargar archivo
+                        # Download file
                         downloaded_file_path = self.browser_wrapper.expect_download_and_click(
                             download_link, timeout=60000, downloads_dir=self.job_downloads_dir
                         )
 
                         if downloaded_file_path:
                             actual_filename = os.path.basename(downloaded_file_path)
-                            self.logger.info(f"Archivo descargado: {actual_filename}")
+                            self.logger.info(f"File downloaded: {actual_filename}")
 
                             file_info = FileDownloadInfo(
                                 file_id=daily_usage_file.id if daily_usage_file else 1,
@@ -527,84 +527,84 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
                             if daily_usage_file:
                                 self.logger.info(
-                                    f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                                    f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
                                 )
 
                             return file_info
                         else:
-                            self.logger.error("Error en descarga del archivo")
+                            self.logger.error("Error downloading file")
                             return None
 
                     elif "In Queue" in link_text or "queue" in link_text.lower():
-                        self.logger.info("Reporte en cola, esperando 3 minutos mas...")
+                        self.logger.info("Report in queue, waiting 3 more minutes...")
                         time.sleep(180)
                         continue
                     else:
-                        self.logger.info(f"Estado desconocido: {link_text}, esperando 3 minutos mas...")
+                        self.logger.info(f"Unknown status: {link_text}, waiting 3 more minutes...")
                         time.sleep(180)
                         continue
                 else:
-                    self.logger.info("Enlace de descarga no encontrado, esperando 3 minutos mas...")
+                    self.logger.info("Download link not found, waiting 3 more minutes...")
                     time.sleep(180)
                     continue
 
             except Exception as e:
-                self.logger.error(f"Error en intento {attempt}: {str(e)}")
+                self.logger.error(f"Error in attempt {attempt}: {str(e)}")
                 if attempt < max_attempts:
                     time.sleep(180)
                 continue
 
-        self.logger.error("Maximo de intentos alcanzado sin poder descargar el reporte")
+        self.logger.error("Maximum attempts reached without being able to download report")
         return None
 
     def _find_best_report_row(self, report_name: str, target_account: str) -> Optional[int]:
-        """Busca la mejor fila que coincida con el reporte.
+        """Finds the best row matching the report.
 
-        Criterios:
-        1. El nombre del reporte debe coincidir (columna 2)
-        2. El BAN debe coincidir con target_account O decir "Multiple" (columna 5)
-        3. De las coincidencias, elige la con Date generated mas reciente (columna 8)
+        Criteria:
+        1. Report name must match (column 2)
+        2. BAN must match target_account OR say "Multiple" (column 5)
+        3. From matches, choose the one with most recent Date generated (column 8)
 
-        La tabla tiene estructura de columnas separadas:
-        - Columna 1: vacia (firstColumnId)
-        - Columna 2: Report name
-        - Columna 3: Status (Download/In Queue)
-        - Columna 4: Report type
-        - Columna 5: BAN
-        - Columna 6: Submitted by
-        - Columna 7: Date submitted
-        - Columna 8: Date generated
-        - Columna 9: vacia (lastColumnId)
+        Table has separated column structure:
+        - Column 1: empty (firstColumnId)
+        - Column 2: Report name
+        - Column 3: Status (Download/In Queue)
+        - Column 4: Report type
+        - Column 5: BAN
+        - Column 6: Submitted by
+        - Column 7: Date submitted
+        - Column 8: Date generated
+        - Column 9: empty (lastColumnId)
 
         Returns:
-            int: Indice de la fila (1-based) o None si no se encuentra
+            int: Row index (1-based) or None if not found
         """
         try:
-            self.logger.info(f"Buscando reporte '{report_name}' con BAN '{target_account}'...")
+            self.logger.info(f"Searching for report '{report_name}' with BAN '{target_account}'...")
 
-            candidates = []  # Lista de tuplas: (row_index, date_generated_text)
+            candidates = []  # List of tuples: (row_index, date_generated_text)
 
-            # Escanear hasta 10 filas buscando coincidencias
+            # Scan up to 10 rows looking for matches
             for i in range(1, 11):
-                # Obtener nombre del reporte (columna 2)
+                # Get report name (column 2)
                 name_xpath = (
                     f"//div[contains(@class, 'new__dynamic__table__column')][2]"
                     f"//div[contains(@class, 'new-dynamic-table__table__cell')][{i}]//span"
                 )
 
                 if not self.browser_wrapper.find_element_by_xpath(name_xpath, timeout=1000):
-                    break  # No hay mas filas
+                    break  # No more rows
 
                 name_text = self.browser_wrapper.get_text(name_xpath).strip()
 
-                # Verificar si el nombre coincide
+                # Check if name matches
                 if report_name not in name_text:
-                    self.logger.debug(f"Fila {i}: nombre '{name_text}' no coincide")
+                    self.logger.debug(f"Row {i}: name '{name_text}' doesn't match")
                     continue
 
-                self.logger.debug(f"Fila {i}: nombre coincide '{name_text}'")
+                self.logger.debug(f"Row {i}: name matches '{name_text}'")
 
-                # Obtener BAN (columna 5)
+                # Get BAN (column 5)
                 ban_xpath = (
                     f"//div[contains(@class, 'new__dynamic__table__column')][5]"
                     f"//div[contains(@class, 'new-dynamic-table__table__cell')][{i}]//span"
@@ -612,17 +612,17 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
 
                 if self.browser_wrapper.find_element_by_xpath(ban_xpath, timeout=1000):
                     ban_text = self.browser_wrapper.get_text(ban_xpath).strip()
-                    self.logger.debug(f"Fila {i}: BAN = '{ban_text}'")
+                    self.logger.debug(f"Row {i}: BAN = '{ban_text}'")
 
-                    # Validar BAN: debe ser el account number O "Multiple"
+                    # Validate BAN: must be account number OR "Multiple"
                     if target_account not in ban_text and "Multiple" not in ban_text:
-                        self.logger.debug(f"Fila {i}: BAN no coincide (esperado: {target_account})")
+                        self.logger.debug(f"Row {i}: BAN doesn't match (expected: {target_account})")
                         continue
                 else:
-                    self.logger.debug(f"Fila {i}: no se pudo obtener BAN")
+                    self.logger.debug(f"Row {i}: could not get BAN")
                     continue
 
-                # Obtener Date generated (columna 8)
+                # Get Date generated (column 8)
                 date_xpath = (
                     f"//div[contains(@class, 'new__dynamic__table__column')][8]"
                     f"//div[contains(@class, 'new-dynamic-table__table__cell')][{i}]//span"
@@ -631,77 +631,77 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 date_text = ""
                 if self.browser_wrapper.find_element_by_xpath(date_xpath, timeout=1000):
                     date_text = self.browser_wrapper.get_text(date_xpath).strip()
-                    self.logger.debug(f"Fila {i}: Date generated = '{date_text}'")
+                    self.logger.debug(f"Row {i}: Date generated = '{date_text}'")
 
-                # Esta fila es candidata
+                # This row is a candidate
                 candidates.append((i, date_text))
-                self.logger.info(f"Fila {i} es candidata: nombre='{name_text}', BAN='{ban_text}', fecha='{date_text}'")
+                self.logger.info(f"Row {i} is candidate: name='{name_text}', BAN='{ban_text}', date='{date_text}'")
 
             if not candidates:
-                self.logger.warning(f"No se encontraron filas con reporte '{report_name}' y BAN '{target_account}'")
+                self.logger.warning(f"No rows found with report '{report_name}' and BAN '{target_account}'")
                 return None
 
             if len(candidates) == 1:
-                self.logger.info(f"Una sola coincidencia encontrada: fila {candidates[0][0]}")
+                self.logger.info(f"Single match found: row {candidates[0][0]}")
                 return candidates[0][0]
 
-            # Multiples candidatos: elegir el mas reciente por Date generated
-            self.logger.info(f"Encontrados {len(candidates)} candidatos, seleccionando el mas reciente...")
+            # Multiple candidates: choose most recent by Date generated
+            self.logger.info(f"Found {len(candidates)} candidates, selecting most recent...")
             best_row = self._select_most_recent_row(candidates)
-            self.logger.info(f"Fila seleccionada (mas reciente): {best_row}")
+            self.logger.info(f"Selected row (most recent): {best_row}")
             return best_row
 
         except Exception as e:
-            self.logger.error(f"Error buscando reporte en tabla: {str(e)}")
+            self.logger.error(f"Error searching for report in table: {str(e)}")
             return None
 
     def _select_most_recent_row(self, candidates: List[Tuple[int, str]]) -> int:
-        """Selecciona la fila con la fecha mas reciente.
+        """Selects the row with most recent date.
 
         Args:
-            candidates: Lista de tuplas (row_index, date_text)
-                       date_text formato: "Dec 25, 2025 17:37 CST"
+            candidates: List of tuples (row_index, date_text)
+                       date_text format: "Dec 25, 2025 17:37 CST"
 
         Returns:
-            int: Indice de la fila mas reciente
+            int: Index of most recent row
         """
         try:
             parsed_candidates = []
 
             for row_index, date_text in candidates:
                 try:
-                    # Parsear fecha: "Dec 25, 2025 17:37 CST"
-                    # Remover timezone para parsear
+                    # Parse date: "Dec 25, 2025 17:37 CST"
+                    # Remove timezone for parsing
                     date_clean = date_text.replace(" CST", "").replace(" EST", "").replace(" PST", "").strip()
                     parsed_date = datetime.strptime(date_clean, "%b %d, %Y %H:%M")
                     parsed_candidates.append((row_index, parsed_date))
                 except ValueError as e:
-                    self.logger.warning(f"No se pudo parsear fecha '{date_text}': {e}")
-                    # Usar fecha minima si no se puede parsear
+                    self.logger.warning(f"Could not parse date '{date_text}': {e}")
+                    # Use minimum date if can't parse
                     parsed_candidates.append((row_index, datetime.min))
 
-            # Ordenar por fecha descendente (mas reciente primero)
+            # Sort by date descending (most recent first)
             parsed_candidates.sort(key=lambda x: x[1], reverse=True)
 
-            # Retornar el indice de la fila mas reciente
+            # Return index of most recent row
             return parsed_candidates[0][0]
 
         except Exception as e:
-            self.logger.error(f"Error seleccionando fila mas reciente: {e}")
-            # Fallback: retornar el primer candidato
+            self.logger.error(f"Error selecting most recent row: {e}")
+            # Fallback: return first candidate
             return candidates[0][0]
 
     def _get_download_link_for_report(self, row_index: int) -> Optional[str]:
-        """Obtiene el XPath del enlace de descarga para una fila especifica.
+        """Gets XPath of download link for a specific row.
 
         Args:
-            row_index: Indice de la fila (1-based)
+            row_index: Row index (1-based)
 
         Returns:
-            str: XPath del enlace de descarga o None si no existe
+            str: Download link XPath or None if not found
         """
         try:
-            # La columna de status es la tercera columna
+            # Status column is the third column
             download_link_xpath = (
                 f"//div[contains(@class, 'new__dynamic__table__column')][3]"
                 f"//div[contains(@class, 'new-dynamic-table__table__cell')][{row_index}]"
@@ -711,7 +711,7 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             if self.browser_wrapper.find_element_by_xpath(download_link_xpath, timeout=3000):
                 return download_link_xpath
 
-            # Alternativa: buscar enlace sin clase especifica
+            # Alternative: search for link without specific class
             alt_download_xpath = (
                 f"//div[contains(@class, 'new__dynamic__table__column')][3]"
                 f"//div[contains(@class, 'new-dynamic-table__table__cell')][{row_index}]"
@@ -724,25 +724,25 @@ class TelusDailyUsageScraperStrategy(DailyUsageScraperStrategy):
             return None
 
         except Exception as e:
-            self.logger.error(f"Error obteniendo enlace de descarga: {str(e)}")
+            self.logger.error(f"Error getting download link: {str(e)}")
             return None
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de Telus."""
+        """Resets to Telus main screen."""
         try:
-            self.logger.info("Reseteando a My Telus...")
+            self.logger.info("Resetting to My Telus...")
             self.browser_wrapper.goto("https://www.telus.com/my-telus")
             self.browser_wrapper.wait_for_page_load()
             time.sleep(3)
-            self.logger.info("Reset completado")
+            self.logger.info("Reset completed")
         except Exception as e:
-            self.logger.error(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error in reset: {str(e)}")
 
     def get_pool_data(self) -> Dict[str, Optional[int]]:
-        """Retorna los datos del pool extraidos durante la navegacion.
+        """Returns pool data extracted during navigation.
 
         Returns:
-            Dict con pool_size y pool_used en bytes
+            Dict with pool_size and pool_used in bytes
         """
         return {
             "pool_size": self.pool_size,
