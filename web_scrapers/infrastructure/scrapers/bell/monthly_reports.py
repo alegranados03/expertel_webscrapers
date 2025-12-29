@@ -816,6 +816,38 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         self.logger.warning(f"No valid recent notification found for '{report_slug}'")
         return None
 
+    def _click_apply_filters_if_needed(self, context: str) -> None:
+        """Click Apply Filters button if auto-apply is not enabled.
+
+        Args:
+            context: Description of what filter was just applied (for logging)
+        """
+        auto_apply_checkbox_xpath = "//*[@id='wb-sheet-btn-apply']/div[2]/div//input[@id='autoApplyButton']"
+        auto_apply_enabled = False
+
+        try:
+            # Check if auto apply checkbox exists and is checked
+            if self.browser_wrapper.find_element_by_xpath(auto_apply_checkbox_xpath, timeout=3000):
+                auto_apply_enabled = self.browser_wrapper.page.is_checked(f"xpath={auto_apply_checkbox_xpath}")
+                if auto_apply_enabled:
+                    self.logger.info(f"'Auto apply' is enabled - skipping Apply button after {context}")
+                else:
+                    self.logger.info(f"'Auto apply' is disabled - will click Apply Filters after {context}")
+        except Exception as e:
+            self.logger.debug(f"Could not verify 'Auto apply' status: {str(e)}, assuming manual apply is needed")
+
+        # Only click Apply Filters if auto apply is not enabled
+        if not auto_apply_enabled:
+            apply_filters_xpath = "//*[@id='filter_apply_btn']"
+            self.logger.info(f"Clicking Apply Filters after {context}...")
+            self.browser_wrapper.click_element(apply_filters_xpath)
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(30)  # Wait for filters to apply
+            self.logger.info(f"Filters applied successfully after {context}")
+        else:
+            self.logger.info(f"Auto apply active - waiting for automatic filter application after {context}...")
+            time.sleep(10)  # Shorter wait for auto-apply
+
     def _apply_report_filters(
         self, report_slug: str, account_number: Optional[str], invoice_month: str, report_config: dict
     ) -> None:
@@ -830,40 +862,17 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self._select_invoice_month_dynamic(invoice_month)
             time.sleep(1)
 
-            # Step 2: Select account (multi-select)
+            # Step 2: Click Apply Filters after invoice month selection
+            self._click_apply_filters_if_needed(f"invoice month '{invoice_month}'")
+
+            # Step 3: Select account (multi-select)
+            # Note: We don't call Apply Filters after this because:
+            # - If single account: already selected, no action needed
+            # - If multiple accounts: table filter applies via "Ok" button
             if account_number:
                 self.logger.info(f"Selecting account '{account_number}' for {report_slug}...")
                 self._select_account_dynamic(account_number)
                 time.sleep(1)
-
-            # Step 3: Check if "Auto apply" is enabled before clicking Apply Filters
-            auto_apply_checkbox_xpath = "//*[@id='wb-sheet-btn-apply']/div[2]/div//input[@id='autoApplyButton']"
-            auto_apply_enabled = False
-
-            try:
-                # Check if auto apply checkbox exists and is checked
-                if self.browser_wrapper.find_element_by_xpath(auto_apply_checkbox_xpath, timeout=3000):
-                    auto_apply_enabled = self.browser_wrapper.page.is_checked(f"xpath={auto_apply_checkbox_xpath}")
-                    if auto_apply_enabled:
-                        self.logger.info(
-                            f"'Auto apply' is enabled - filters will be applied automatically, skipping Apply button"
-                        )
-                    else:
-                        self.logger.info(f"'Auto apply' is disabled - will click Apply Filters button")
-            except Exception as e:
-                self.logger.debug(f"Could not verify 'Auto apply' status: {str(e)}, assuming manual apply is needed")
-
-            # Only click Apply Filters if auto apply is not enabled
-            if not auto_apply_enabled:
-                apply_filters_xpath = "//*[@id='filter_apply_btn']"
-                self.logger.info(f"Clicking Apply Filters for {report_slug}...")
-                self.browser_wrapper.click_element(apply_filters_xpath)
-                self.browser_wrapper.wait_for_page_load()
-            else:
-                self.logger.info(f"Auto apply active - waiting for automatic filter application...")
-
-            time.sleep(30)  # Wait 1 minute for filters to apply (either manually or automatically)
-            self.logger.info(f"Filters applied successfully for {report_slug}")
 
         except Exception as e:
             self.logger.error(f"Error applying filters for {report_slug}: {str(e)}")
@@ -974,17 +983,42 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # Click to open the dropdown
             self.logger.info("Clicking invoice month dropdown button...")
             self.browser_wrapper.click_element(invoice_month_dropdown_xpath)
-            time.sleep(2)  # Wait for dropdown animation
+            time.sleep(3)  # Wait for dropdown animation and lazy loading
             self.logger.info("Invoice month dropdown opened")
 
-            # Step 4: Find and click the specific month option
-            # The month options are within the dropdown's list area
-            month_option_xpath = f"{invoice_month_section_xpath}//li[contains(@class, 'list-item')][.//span[contains(@class, 'singleselect-dropdown-item') and contains(., '{month_text}')]]"
-            self.browser_wrapper.wait_for_element(month_option_xpath, timeout=10000)
-            time.sleep(1)
+            # Step 4: Use the search box to filter and select the month
+            # The dropdown has a search input that filters the virtualized list
+            self.logger.info(f"Looking for invoice month option: '{month_text}'...")
 
+            # Find the search input within the dropdown (it appears after dropdown opens)
+            # The search input has placeholder="Search" or aria-label="searchbox"
+            search_input_xpath = f"{invoice_month_section_xpath}//input[@placeholder='Search' or @aria-label='searchbox']"
+
+            try:
+                self.browser_wrapper.wait_for_element(search_input_xpath, timeout=5000)
+                self.logger.info(f"Search box found, typing '{month_text}'...")
+
+                # Type the month text to filter the dropdown
+                self.browser_wrapper.type_text(search_input_xpath, month_text)
+                time.sleep(3)  # Wait for filter to apply
+
+                self.logger.info("Search filter applied, looking for filtered result...")
+            except Exception as search_e:
+                self.logger.warning(f"Search box not found or failed: {search_e}, trying direct selection...")
+
+            # Now find and click the month option (should be visible after filtering)
+            month_option_xpath = f"{invoice_month_section_xpath}//li[contains(@class, 'list-item')][.//span[contains(@class, 'singleselect-dropdown-item') and contains(., '{month_text}')]]"
+            month_locator = self.browser_wrapper.page.locator(f"xpath={month_option_xpath}")
+
+            # Wait for the filtered result to appear
+            month_locator.wait_for(state="attached", timeout=10000)
+            self.logger.info(f"Month '{month_text}' found in filtered results")
+
+            # Click the month
+            month_locator.scroll_into_view_if_needed()
+            time.sleep(0.5)
             self.logger.info(f"Clicking invoice month option: '{month_text}'...")
-            self.browser_wrapper.click_element(month_option_xpath)
+            month_locator.click()
             time.sleep(1)
 
             self.logger.info(f"Invoice month '{month_text}' selected successfully")
@@ -994,14 +1028,11 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             raise e
 
     def _select_account_dynamic(self, account_number: str) -> None:
-        """Dynamically select account from dropdown within the filter container.
+        """Dynamically select account within the filter container.
 
-        Searches within the filter section regardless of filter order, then selects the account.
         Handles two scenarios:
         1. Single account: Already selected automatically, no action needed
-        2. Multiple accounts: Uncheck "Select all" and select only the specified account
-
-        If the primary method fails, uses an alternative table-based filter approach.
+        2. Multiple accounts: Uses table header filter (more reliable than dropdown)
         """
         try:
             self.logger.info(f"Dynamically selecting account: '{account_number}'...")
@@ -1038,73 +1069,15 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             except Exception as e:
                 self.logger.debug(f"Could not read display text: {str(e)}, continuing with selection...")
 
-            # Step 4: Open the dropdown if it's not already open
-            # Check aria-expanded attribute to see if dropdown is open
-            try:
-                # Use xpath locator with proper syntax
-                aria_expanded = self.browser_wrapper.page.locator(f"xpath={account_dropdown_xpath}").get_attribute(
-                    "aria-expanded"
-                )
-                if aria_expanded == "false":
-                    self.logger.info("Opening dropdown...")
-                    self.browser_wrapper.click_element(account_dropdown_xpath)
-                    time.sleep(3)
-                    self.logger.info("Dropdown opened")
-                else:
-                    self.logger.info("Dropdown already open")
-            except Exception as e:
-                self.logger.debug(f"Could not check aria-expanded, assuming dropdown is closed: {str(e)}")
-                self.browser_wrapper.click_element(account_dropdown_xpath)
-                time.sleep(3)
-                self.logger.info("Dropdown opened (fallback)")
-
-            # Step 5: Check if "Select all" is checked and uncheck it if needed
-            # Only needed if we have multiple accounts
-            select_all_label_xpath = f"{account_section_xpath}//label[@class='kt-checkbox multiselect-dropdown-item checkbox-active ng-star-inserted']"
-            try:
-                # If the label has checkbox-active class, it means it's checked
-                self.logger.info("Unchecking 'Select all'...")
-                self.browser_wrapper.click_element(select_all_label_xpath)
-                time.sleep(3)  # Wait for the list to update
-                self.logger.info("'Select all' unchecked")
-            except Exception as e:
-                self.logger.debug(f"'Select all' checkbox not found or not checked: {str(e)}")
-
-            # Step 5b: The dropdown closes after unchecking, so we MUST reopen it
-            # This is a known behavior - the dropdown closes after state changes
-            self.logger.info("Reopening dropdown after unchecking 'Select all'...")
-            self.browser_wrapper.click_element(account_dropdown_xpath)
-            time.sleep(3)  # Wait for dropdown to reopen and list to render
-            self.logger.info("Dropdown reopened with updated list")
-
-            # Step 6: Find and select ONLY the specific account
-            # The structure is: li > span > input + label
-            # Find the label with the account number, then click its preceding input
-            account_label_xpath = f"{account_section_xpath}//div[@class='dropdown_items']//li[contains(@class, 'multiselect-setting')]//label[contains(., '{account_number}')]"
-            self.browser_wrapper.wait_for_element(account_label_xpath, timeout=10000)
-            time.sleep(1)
-
-            # Find the checkbox (input) that precedes this label (they're siblings within the span)
-            account_checkbox_xpath = f"{account_section_xpath}//div[@class='dropdown_items']//li[contains(@class, 'multiselect-setting')]//span[.//label[contains(., '{account_number}')]]//input[@type='checkbox']"
-            self.logger.info(f"Selecting account '{account_number}'...")
-            self.browser_wrapper.click_element(account_checkbox_xpath)
-            time.sleep(1)
-
-            self.logger.info(f"Account '{account_number}' selected successfully")
+            # Multiple accounts detected - use table header filter directly
+            # This is more reliable than the dropdown method
+            self.logger.info("Multiple accounts detected, using table header filter...")
+            self._select_account_via_table_filter(account_number)
+            self.logger.info(f"Account '{account_number}' selected successfully via table filter")
 
         except Exception as e:
-            self.logger.error(f"Primary account selection method failed: {str(e)}")
-            self.logger.info("Attempting alternative table-based filter method...")
-
-            # Try alternative method using table header filter
-            try:
-                self._select_account_via_table_filter(account_number)
-                self.logger.info(f"Account '{account_number}' selected successfully using alternative method")
-            except Exception as e2:
-                self.logger.error(f"Alternative account selection method also failed: {str(e2)}")
-                raise Exception(
-                    f"Both account selection methods failed. Primary error: {str(e)}, Alternative error: {str(e2)}"
-                )
+            self.logger.error(f"Account selection failed: {str(e)}")
+            raise e
 
     def _select_account_via_table_filter(self, account_number: str) -> None:
         """Alternative method: Select account using the table header filter menu.

@@ -2,18 +2,10 @@
 Main ScraperJob processor with available_at support
 """
 
-import logging
 import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), ".")))
-
-# Configure logging BEFORE Django setup and imports
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("main.log", mode="a")],
-)
 
 import django
 
@@ -96,7 +88,12 @@ class ScraperJobProcessor:
 
             scraper_type = ScraperType(scraper_job.type)
 
-            # Intelligent session management and verification
+            # Session management - always delegate to SessionManager which handles:
+            # 1. Same carrier + same credentials + same scraper_type → reuse session
+            # 2. Same carrier + same credentials + different scraper_type → check login URL
+            #    - Same login URL → reuse session
+            #    - Different login URL → logout and re-login (e.g., Bell Enterprise vs Bell old portal)
+            # 3. Different carrier or credentials → logout and re-login
             if self.session_manager.is_logged_in():
                 current_carrier = self.session_manager.get_current_carrier()
                 current_credentials = self.session_manager.get_current_credentials()
@@ -104,21 +101,8 @@ class ScraperJobProcessor:
                     f"Active session for {current_carrier.value if current_carrier else 'Unknown'} with user {current_credentials.username if current_credentials else 'N/A'}"
                 )
 
-                # Check if current session matches required credentials
-                if (
-                    current_carrier == credentials.carrier
-                    and current_credentials
-                    and current_credentials.id == credentials.id
-                ):
-                    self.logger.info("Using existing session - credentials match")
-                    login_success = True
-                else:
-                    self.logger.info("Credentials differ from current session - logging out and re-authenticating")
-                    self.session_manager.logout()
-                    login_success = self.session_manager.login(credentials, scraper_type=scraper_type)
-            else:
-                self.logger.info("No active session - initiating login")
-                login_success = self.session_manager.login(credentials, scraper_type=scraper_type)
+            # Always call session_manager.login() - it handles session reuse logic internally
+            login_success = self.session_manager.login(credentials, scraper_type=scraper_type)
 
             if not login_success:
                 error_msg = "Authentication failed"
