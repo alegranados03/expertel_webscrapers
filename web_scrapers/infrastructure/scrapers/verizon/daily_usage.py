@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from typing import Any, List, Optional
@@ -14,168 +15,246 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class VerizonDailyUsageScraperStrategy(DailyUsageScraperStrategy):
-    """Scraper de uso diario para Verizon."""
+    """Daily usage scraper for Verizon.
+
+    Downloads Account unbilled usage report.
+
+    Flow:
+    1. Navigate to Reports tab -> Reports Home
+    2. Click on Usage tab
+    3. Click on "Account unbilled usage" report
+    4. Configure filters (View by: Account number, Select number: account)
+    5. Apply changes and download report
+    """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de uso diario de Verizon."""
+        """Navigates to Verizon Usage reports section."""
         try:
-            print("Navegando a uso diario de Verizon...")
+            self.logger.info("Navigating to Verizon daily usage reports...")
 
-            # 1. Click en report tab
-            report_tab_xpath = "/html/body/app-root/app-secure-layout/div/div[1]/app-header/header/div[2]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/a"
-            print("Haciendo clic en report tab...")
-            self.browser_wrapper.click_element(report_tab_xpath)
-            time.sleep(2)
+            # 1. Click on Reports tab
+            reports_tab_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/a'
+            self.logger.info("Clicking on Reports tab...")
 
-            # 2. Click en reports home
-            reports_home_xpath = "/html/body/app-root/app-secure-layout/div/div[1]/app-header/header/div[2]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/div/div/div[1]/div/ul/li[1]/a"
-            print("Haciendo clic en reports home...")
-            self.browser_wrapper.click_element(reports_home_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
+            if self.browser_wrapper.is_element_visible(reports_tab_xpath, timeout=10000):
+                self.browser_wrapper.click_element(reports_tab_xpath)
+                time.sleep(2)
+            else:
+                self.logger.error("Reports tab not found")
+                self._reset_to_main_screen()
+                return None
 
-            # 3. Click en usage tab
-            usage_tab_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/main/div/div[2]/div[2]/div/div/div[2]/div[2]/app-tab-click/div/div[1]/ul/li[3]"
-            print("Haciendo clic en usage tab...")
-            self.browser_wrapper.click_element(usage_tab_xpath)
-            time.sleep(2)
+            # 2. Click on Reports Home
+            reports_home_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/div/div/div[1]/div/ul/li[1]/a'
+            self.logger.info("Clicking on Reports Home...")
 
-            print("Navegacion a uso diario completada")
+            if self.browser_wrapper.is_element_visible(reports_home_xpath, timeout=5000):
+                self.browser_wrapper.click_element(reports_home_xpath)
+                self.logger.info("Waiting 15 seconds for Reports page to load...")
+                time.sleep(15)
+            else:
+                self.logger.error("Reports Home option not found")
+                self._reset_to_main_screen()
+                return None
+
+            # 3. Click on Usage tab
+            usage_tab_xpath = '//li[@data-track="Usage"]'
+            self.logger.info("Clicking on Usage tab...")
+
+            if self.browser_wrapper.is_element_visible(usage_tab_xpath, timeout=10000):
+                self.browser_wrapper.click_element(usage_tab_xpath)
+                self.logger.info("Waiting 5 seconds for Usage reports to load...")
+                time.sleep(5)
+            else:
+                self.logger.error("Usage tab not found")
+                self._reset_to_main_screen()
+                return None
+
+            self.logger.info("Navigation to Usage section completed")
             return {"section": "daily_usage", "ready_for_download": True}
 
         except Exception as e:
-            print(f"Error navegando a uso diario: {str(e)}")
+            self.logger.error(f"Error navigating to daily usage: {str(e)}")
+            self._reset_to_main_screen()
             return None
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga los archivos de uso diario de Verizon."""
+        """Downloads the Account unbilled usage report."""
         downloaded_files = []
 
-        # Obtener el BillingCycleDailyUsageFile del billing_cycle
+        # Get the BillingCycleDailyUsageFile from billing_cycle
         daily_usage_file = billing_cycle.daily_usage_files[0] if billing_cycle.daily_usage_files else None
         if daily_usage_file:
-            print(f"Mapeando archivo Daily Usage -> BillingCycleDailyUsageFile ID {daily_usage_file.id}")
+            self.logger.info(f"Mapping to BillingCycleDailyUsageFile ID {daily_usage_file.id}")
 
         try:
-            print("Descargando archivos de uso diario...")
+            self.logger.info("Starting download of Account unbilled usage report...")
 
-            # 4. Click en account unbilled usage block usando logica de busqueda inteligente
-            account_unbilled_xpath = self._find_report_by_title_in_usage("Account unbilled usage")
-            if account_unbilled_xpath:
-                print("Haciendo clic en Account unbilled usage...")
+            # 1. Click on "Account unbilled usage" report
+            account_unbilled_xpath = '//div[@data-track="Usage reports: Account unbilled usage"]'
+            self.logger.info("Clicking on Account unbilled usage report...")
+
+            if self.browser_wrapper.is_element_visible(account_unbilled_xpath, timeout=10000):
                 self.browser_wrapper.click_element(account_unbilled_xpath)
-                time.sleep(2)
-
-                # 5. Download full report
-                download_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/div[1]/app-reporting-dashboard/div/div[2]/div/div[1]/div/div[1]/div[2]/div"
-                print("Descargando Daily Usage report...")
-
-                file_path = self.browser_wrapper.expect_download_and_click(
-                    download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
-                )
-
-                if file_path:
-                    actual_filename = os.path.basename(file_path)
-                    print(f"Daily Usage descargado: {actual_filename}")
-
-                    file_info = FileDownloadInfo(
-                        file_id=daily_usage_file.id,
-                        file_name=actual_filename,
-                        download_url="N/A",
-                        file_path=file_path,
-                        daily_usage_file=daily_usage_file,
-                    )
-                    downloaded_files.append(file_info)
-
-                    # Confirmar mapeo
-                    if daily_usage_file:
-                        print(
-                            f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
-                        )
-                else:
-                    print("No se pudo descargar Daily Usage report")
+                self.logger.info("Waiting 10 seconds for report page to load...")
+                time.sleep(10)
             else:
-                print("No se encontro Account unbilled usage report")
+                self.logger.error("Account unbilled usage report not found")
+                self._reset_to_main_screen()
+                return downloaded_files
 
-            # Reset a pantalla principal
+            # 2. Configure filters
+            account_number = billing_cycle.account.number
+            self.logger.info(f"Configuring filters for account: {account_number}")
+            self._configure_filters(account_number)
+
+            # 3. Click Apply changes
+            self._click_apply_filters()
+            self.logger.info("Waiting 10 seconds after applying filters...")
+            time.sleep(10)
+
+            # 4. Download full report
+            file_path = self._download_full_report()
+
+            if file_path:
+                actual_filename = os.path.basename(file_path)
+                self.logger.info(f"Account unbilled usage downloaded: {actual_filename}")
+
+                file_info = FileDownloadInfo(
+                    file_id=daily_usage_file.id if daily_usage_file else 0,
+                    file_name=actual_filename,
+                    download_url="N/A",
+                    file_path=file_path,
+                    daily_usage_file=daily_usage_file,
+                )
+                downloaded_files.append(file_info)
+
+                if daily_usage_file:
+                    self.logger.info(
+                        f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
+                    )
+            else:
+                self.logger.error("Could not download Account unbilled usage report")
+
+            # Reset to main screen
             self._reset_to_main_screen()
 
             return downloaded_files
 
         except Exception as e:
-            print(f"Error en descarga de uso diario: {str(e)}")
+            self.logger.error(f"Error downloading daily usage: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
                 pass
             return downloaded_files
 
-    def _find_report_by_title_in_usage(self, title: str) -> Optional[str]:
-        """Encuentra un reporte por su titulo dentro del componente app-reports-list de usage."""
+    # ==================== HELPER METHODS ====================
+
+    def _configure_filters(self, account_number: str):
+        """Configures View by and Select number filters."""
         try:
-            print(f"Buscando reporte: {title}")
-
-            # Obtener el contenedor de reportes de usage
-            container_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/main/div/div[2]/div[2]/div/div/div[2]/div[4]/div[4]/div/app-reports-list"
-
-            # Usar JavaScript para encontrar el reporte por titulo
-            report_xpath = self.browser_wrapper.page.evaluate(
-                f"""
-                () => {{
-                    const container = document.evaluate("{container_xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    if (container) {{
-                        const reportBlocks = container.querySelectorAll('div[role="link"][aria-label="Report"]');
-                        for (let block of reportBlocks) {{
-                            const titleElement = block.querySelector('h3 span[title]');
-
-                            if (titleElement && titleElement.getAttribute('title').includes("{title}")) {{
-                                // Construir el XPath del elemento
-                                let xpath = '';
-                                let element = block;
-                                while (element && element.nodeType === Node.ELEMENT_NODE) {{
-                                    let tagName = element.nodeName.toLowerCase();
-                                    if (element.id) {{
-                                        xpath = '//' + tagName + '[@id="' + element.id + '"]' + xpath;
-                                        break;
-                                    }} else {{
-                                        let position = Array.from(element.parentNode.children).indexOf(element) + 1;
-                                        xpath = '/' + tagName + '[' + position + ']' + xpath;
-                                        element = element.parentElement;
-                                    }}
-                                }}
-                                return '/html' + xpath;
-                            }}
-                        }}
-                    }}
-                    return null;
-                }}
-            """
+            # View by dropdown - click to open
+            view_by_xpath = (
+                "//div[contains(@class, 'filter-inputs') and contains(@class, 'viewby')]"
+                "//app-dropdown//div[@role='combobox']"
             )
 
-            if report_xpath:
-                print(f"Reporte encontrado: {report_xpath}")
-                return report_xpath
-            else:
-                print(f"No se encontro el reporte: {title}")
-                return None
+            if self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
+                self.browser_wrapper.click_element(view_by_xpath)
+                time.sleep(1)
+
+                # Select "Account number" option
+                account_option_xpath = (
+                    "//ul[@role='listbox']//li[@role='option' and contains(text(), 'Account number')]"
+                )
+                if self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
+                    self.browser_wrapper.click_element(account_option_xpath)
+                    self.logger.info("Selected 'Account number' in View by")
+                    time.sleep(1)
+
+            # Select number dropdown - click to open
+            select_number_xpath = (
+                "//span[contains(@class, 'font-10') and contains(text(), 'Select number')]"
+                "/following-sibling::div//app-dropdown//div[@role='combobox']"
+            )
+
+            if self.browser_wrapper.is_element_visible(select_number_xpath, timeout=5000):
+                self.browser_wrapper.click_element(select_number_xpath)
+                time.sleep(1)
+
+                # Select account that contains the number
+                account_option_xpath = (
+                    f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{account_number}')]"
+                )
+                if self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
+                    self.browser_wrapper.click_element(account_option_xpath)
+                    self.logger.info(f"Selected account: {account_number}")
 
         except Exception as e:
-            print(f"Error buscando reporte por titulo: {str(e)}")
+            self.logger.warning(f"Error configuring filters: {str(e)}")
+
+    def _click_apply_filters(self):
+        """Clicks Apply filters button if enabled."""
+        try:
+            apply_button_xpath = '//*[@id="apply-changes"]'
+
+            if self.browser_wrapper.is_element_visible(apply_button_xpath, timeout=3000):
+                # Check if button is enabled by getting its attribute
+                button_class = self.browser_wrapper.get_attribute(apply_button_xpath, "class")
+
+                if "disabled" not in button_class.lower():
+                    self.logger.info("Clicking Apply filters button...")
+                    self.browser_wrapper.click_element(apply_button_xpath)
+                else:
+                    self.logger.info("Apply filters button is disabled")
+
+        except Exception as e:
+            self.logger.warning(f"Error clicking Apply filters: {str(e)}")
+
+    def _download_full_report(self) -> Optional[str]:
+        """Downloads full report and returns file path."""
+        try:
+            download_xpath = (
+                "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/div[1]/"
+                "app-reporting-dashboard/div/div[2]/div/div[1]/div/div[1]/div[2]/div"
+            )
+
+            if self.browser_wrapper.is_element_visible(download_xpath, timeout=10000):
+                download_text = self.browser_wrapper.get_text(download_xpath)
+
+                if "Download full report" in download_text:
+                    self.logger.info("Clicking Download full report...")
+                    return self.browser_wrapper.expect_download_and_click(
+                        download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                    )
+                else:
+                    self.logger.warning(f"Download text mismatch: '{download_text}'")
+
+            self.logger.error("Download element not found")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error downloading report: {str(e)}")
             return None
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de Verizon."""
+        """Resets to Verizon main screen."""
         try:
-            print("Reseteando a dashboard de Verizon...")
-            dashboard_url = "https://mb.verizonwireless.com/mbt/secure/index?appName=esm#/esm/dashboard"
-            self.browser_wrapper.goto(dashboard_url)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
-            print("Reset completado")
+            self.logger.info("Resetting to Verizon main screen...")
+            home_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[1]/div/a'
+
+            if self.browser_wrapper.is_element_visible(home_xpath, timeout=5000):
+                self.browser_wrapper.click_element(home_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info("Reset completed")
+
         except Exception as e:
-            print(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error resetting: {str(e)}")

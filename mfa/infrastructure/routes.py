@@ -27,6 +27,12 @@ def extract_code_from_email(content: str) -> str | None:
     return match.group(1) if match else None
 
 
+def extract_verizon_allow_deny_link(content: str) -> str | None:
+    """Extract the 'Allow or deny' link from Verizon MFA email content."""
+    match = re.search(r"Allow or deny\s*<(https?://[^>]+)>", content)
+    return match.group(1) if match else None
+
+
 async def authenticate_checker(checker: OutlookInboxChecker) -> bool:
     return await asyncio.to_thread(checker.authenticate)
 
@@ -113,7 +119,58 @@ async def get_tmobile_code(email_alias: str = Query(...)):
     return EventSourceResponse(code_extractor("tmobile", email_alias, carrier_from_email))
 
 
+async def verizon_link_extractor(email_alias: str, carrier_from_email: str) -> AsyncGenerator[dict, None]:
+    """Verizon-specific extractor that returns the 'Allow or deny' link instead of a code."""
+    elapsed = 0
+    TIMEOUT_SECONDS = 300
+    POLL_INTERVAL = 5
+    link = None
+
+    print(f"[Verizon] Starting link extractor for email: {email_alias}")
+    print(f"[Verizon] Looking for emails from: {carrier_from_email}")
+
+    checker = OutlookInboxChecker(CLIENT_ID, TENANT_ID, CLIENT_SECRET)
+    authenticated = await authenticate_checker(checker)
+    if not authenticated:
+        yield sse_event(
+            "endpoint_error", {"carrier": "verizon", "message": "Failed to authenticate with email provider"}
+        )
+        yield sse_event("done", {"carrier": "verizon"})
+        return
+
+    # Subtract 2 minutes to account for timing differences between MFA trigger and endpoint call
+    start_time = datetime.now(timezone.utc) - timedelta(minutes=2)
+    print(f"[Verizon] Start time filter: {start_time}")
+
+    while elapsed < TIMEOUT_SECONDS:
+        messages = await get_messages_async(checker, email_alias, start_time, carrier_from_email)
+
+        print(f"[Verizon] Poll {elapsed}s - Found {len(messages) if messages else 0} messages")
+
+        if messages and len(messages) > 0:
+            first_message = messages[0]
+            print(f"[Verizon] First message subject: {first_message.subject}")
+            link = extract_verizon_allow_deny_link(first_message.body.content)
+            if link:
+                print(f"[Verizon] Link extracted: {link[:50]}...")
+                break
+            else:
+                print("[Verizon] Could not extract link from email body")
+        await asyncio.sleep(POLL_INTERVAL)
+        elapsed += POLL_INTERVAL
+
+    if link is None:
+        yield sse_event(
+            "endpoint_error", {"carrier": "verizon", "message": "Timeout: No MFA link received within 5 minutes"}
+        )
+    else:
+        yield sse_event("link", {"carrier": "verizon", "link": link})
+
+    yield sse_event("done", {"carrier": "verizon"})
+
+
 @router.get("/verizon")
-async def get_verizon_code(email_alias: str = Query(...)):
+async def get_verizon_link(email_alias: str = Query(...)):
     carrier_from_email = "VZWMail@ecrmemail.verizonwireless.com"
-    return EventSourceResponse(code_extractor("verizon", email_alias, carrier_from_email))
+    email_alias = "notifications@expertel.com"
+    return EventSourceResponse(verizon_link_extractor(email_alias, carrier_from_email))

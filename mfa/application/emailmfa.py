@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -62,8 +63,9 @@ class OutlookInboxChecker(InboxChecker):
         if not self.access_token:
             print("You must first authenticate")
             return None
-
+        print(user_email)
         url = f"https://graph.microsoft.com/v1.0/users/{user_email}/messages"
+        print(url)
 
         headers = {
             "Authorization": f"Bearer {self.access_token}",
@@ -83,6 +85,7 @@ class OutlookInboxChecker(InboxChecker):
             "$orderby": "receivedDateTime desc",
         }
 
+        print(params)
         try:
             response = requests.get(url, headers=headers, params=params)
             response.raise_for_status()
@@ -149,7 +152,7 @@ def main():
 
     now_utc = datetime.now(timezone.utc)
     messages = checker.get_messages(
-        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10, from_email="noreply@bell.ca"
+        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10, from_email="VZWMail@ecrmemail.verizonwireless.com"
     )
 
     if messages:

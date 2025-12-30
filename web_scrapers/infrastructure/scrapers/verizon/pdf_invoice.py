@@ -1,6 +1,7 @@
+import logging
 import os
 import time
-from datetime import datetime
+from datetime import date
 from typing import Any, List, Optional
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -15,79 +16,116 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class VerizonPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
-    """Scraper de facturas PDF para Verizon."""
+    """PDF Invoice scraper for Verizon.
+
+    Downloads PDF invoices from the Recent Bills section.
+
+    Flow:
+    1. Navigate to Billing -> Bill details -> Previous bills
+    2. Wait 45s, click on "Recent bills" tab
+    3. Wait 30s, verify account number matches
+    4. Find invoice card matching billing_cycle.end_date
+    5. Click download icon to download PDF
+    """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de facturas PDF de Verizon."""
+        """Navigates to Verizon Recent Bills section."""
         try:
-            print("Navegando a facturas PDF de Verizon...")
+            self.logger.info("Navigating to Verizon PDF invoices...")
 
-            # 1. Click en billing tab
-            billing_tab_xpath = "/html/body/app-root/app-secure-layout/div/div[1]/app-header/header/div[2]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[3]/a"
-            print("Haciendo clic en billing tab...")
-            self.browser_wrapper.click_element(billing_tab_xpath)
-            time.sleep(2)
+            # 1. Click on Billing header
+            billing_tab_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[3]/a'
+            self.logger.info("Clicking on Billing tab...")
 
-            # 2. Click en bill view details
-            bill_view_details_xpath = "/html/body/app-root/app-secure-layout/div/div[1]/app-header/header/div[2]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[3]/div/div/div[1]/div/ul/li[2]/a"
-            print("Haciendo clic en bill view details...")
-            self.browser_wrapper.click_element(bill_view_details_xpath)
-            time.sleep(2)
+            if self.browser_wrapper.is_element_visible(billing_tab_xpath, timeout=10000):
+                self.browser_wrapper.click_element(billing_tab_xpath)
+                time.sleep(2)
+            else:
+                self.logger.error("Billing tab not found")
+                self._reset_to_main_screen()
+                return None
 
-            # 3. Click en recent bills
-            recent_bills_xpath = "/html/body/app-root/app-secure-layout/div/div[1]/app-header/header/div[2]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[3]/div/div/div[2]/div/div[1]/div/ul/li[1]/a"
-            print("Haciendo clic en recent bills...")
-            self.browser_wrapper.click_element(recent_bills_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
+            # 2. Click on View bill details
+            bill_details_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[3]/div/div/div[1]/div/ul/li[2]/a'
+            self.logger.info("Clicking on View bill details...")
 
-            print("Navegacion a facturas PDF completada")
+            if self.browser_wrapper.is_element_visible(bill_details_xpath, timeout=5000):
+                self.browser_wrapper.click_element(bill_details_xpath)
+                time.sleep(2)
+            else:
+                self.logger.error("View bill details option not found")
+                self._reset_to_main_screen()
+                return None
+
+            # 3. Click on Previous bills
+            previous_bills_xpath = '//*[@id="billing-view-bills-s"]/div/ul/li[4]/a'
+            self.logger.info("Clicking on Previous bills...")
+
+            if self.browser_wrapper.is_element_visible(previous_bills_xpath, timeout=5000):
+                self.browser_wrapper.click_element(previous_bills_xpath)
+                self.logger.info("Waiting 10 seconds for page to load...")
+                time.sleep(10)
+            else:
+                self.logger.error("Previous bills option not found")
+                self._reset_to_main_screen()
+                return None
+
+            # 4. Click on "Recent bills" tab in the UL
+            recent_bills_tab_xpath = '//li[contains(text(), "Recent bills")]'
+            self.logger.info("Clicking on Recent bills tab...")
+
+            if self.browser_wrapper.is_element_visible(recent_bills_tab_xpath, timeout=10000):
+                self.browser_wrapper.click_element(recent_bills_tab_xpath)
+                self.logger.info("Recent bills tab clicked")
+                self.logger.info("Waiting 10 seconds for bills to load...")
+                time.sleep(10)
+            else:
+                self.logger.error("Recent bills tab not found")
+                self._reset_to_main_screen()
+                return None
+
+            self.logger.info("Navigation to Recent Bills completed successfully")
             return {"section": "pdf_invoices", "ready_for_download": True}
 
         except Exception as e:
-            print(f"Error navegando a facturas PDF: {str(e)}")
+            self.logger.error(f"Error navigating to PDF invoices: {str(e)}")
+            self._reset_to_main_screen()
             return None
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga las facturas PDF de Verizon."""
+        """Downloads the PDF invoice for the billing cycle."""
         downloaded_files = []
 
-        # Obtener el BillingCyclePDFFile del billing_cycle
+        # Get the BillingCyclePDFFile from billing_cycle
         pdf_file = billing_cycle.pdf_files[0] if billing_cycle.pdf_files else None
         if pdf_file:
-            print(f"Mapeando archivo PDF -> BillingCyclePDFFile ID {pdf_file.id}")
+            self.logger.info(f"Mapping to BillingCyclePDFFile ID {pdf_file.id}")
 
         try:
-            print("Descargando facturas PDF...")
+            self.logger.info("Starting PDF invoice download...")
 
-            # 4. Configurar date dropdown
-            target_date_option = self._find_closest_date_option(billing_cycle)
-            if target_date_option:
-                print(f"Seleccionando periodo: {target_date_option}")
-                self._select_date_option(target_date_option)
-            else:
-                print("No se pudo encontrar periodo apropiado")
-                return downloaded_files
+            # Verify account number matches before downloading
+            expected_account = billing_cycle.account.number
+            self._verify_account_number(expected_account)
 
-            # 5. Download PDF
-            download_pdf_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-view-invoice/div/div[1]/div[1]/div[1]/div/div[2]/app-export-invoice/div/div[1]/div"
-            print("Descargando PDF...")
+            # Find and click download icon for the matching invoice
+            target_month = self._format_month_from_date(billing_cycle.end_date)
+            self.logger.info(f"Looking for invoice: {target_month}")
 
-            file_path = self.browser_wrapper.expect_download_and_click(
-                download_pdf_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
-            )
+            file_path = self._download_invoice_by_month(target_month)
 
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"PDF descargado: {actual_filename}")
+                self.logger.info(f"PDF invoice downloaded: {actual_filename}")
 
                 file_info = FileDownloadInfo(
-                    file_id=pdf_file.id,
+                    file_id=pdf_file.id if pdf_file else 0,
                     file_name=actual_filename,
                     download_url="N/A",
                     file_path=file_path,
@@ -95,145 +133,130 @@ class VerizonPDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 )
                 downloaded_files.append(file_info)
 
-                # Confirmar mapeo
                 if pdf_file:
-                    print(f"MAPEO CONFIRMADO: {actual_filename} -> BillingCyclePDFFile ID {pdf_file.id}")
+                    self.logger.info(f"MAPPING CONFIRMED: {actual_filename} -> BillingCyclePDFFile ID {pdf_file.id}")
             else:
-                print("No se pudo descargar PDF")
+                self.logger.error(f"Could not download PDF invoice for {target_month}")
 
-            # Reset a pantalla principal
+            # Reset to main screen
             self._reset_to_main_screen()
 
-            print(f"Descarga PDF completada: {len(downloaded_files)} archivo(s)")
             return downloaded_files
 
         except Exception as e:
-            print(f"Error en descarga de PDF: {str(e)}")
+            self.logger.error(f"Error downloading PDF invoice: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
                 pass
             return downloaded_files
 
-    def _find_closest_date_option(self, billing_cycle: BillingCycle) -> Optional[str]:
-        """Encuentra la opcion de fecha mas cercana al rango del billing cycle."""
+    # ==================== HELPER METHODS ====================
+
+    def _verify_account_number(self, expected_account: str) -> None:
+        """Verifies the displayed account number matches the expected one.
+
+        Raises:
+            ValueError: If account numbers don't match
+        """
+        account_xpath = (
+            "/html/body/app-root/app-secure-layout/div/main/div/" "app-view-archived-bills/div/div[2]/div/div[2]"
+        )
+
+        self.logger.info(f"Verifying account number: {expected_account}")
+
+        if self.browser_wrapper.is_element_visible(account_xpath, timeout=10000):
+            displayed_account = self.browser_wrapper.get_text(account_xpath).strip()
+            self.logger.info(f"Account displayed on page: {displayed_account}")
+
+            if expected_account not in displayed_account:
+                error_msg = f"Account mismatch! Expected: {expected_account}, " f"Found: {displayed_account}"
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
+
+            self.logger.info("Account number verified successfully")
+        else:
+            error_msg = "Could not find account number element on page"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    def _format_month_from_date(self, target_date: date) -> str:
+        """Formats date to match invoice card format: 'Nov 2025'."""
+        month_abbr = target_date.strftime("%b")  # 'Nov', 'Dec', etc.
+        year = target_date.year
+        return f"{month_abbr} {year}"
+
+    def _download_invoice_by_month(self, target_month: str) -> Optional[str]:
+        """Finds the invoice card matching the target month and clicks download."""
         try:
-            # Obtener las fechas objetivo del billing cycle
-            start_date = billing_cycle.start_date
-            end_date = billing_cycle.end_date
+            self.logger.info(f"Searching for invoice card: {target_month}")
 
-            print(f"Buscando periodo mas cercano a: {start_date} - {end_date}")
-
-            # Obtener todas las opciones disponibles en el dropdown
-            dropdown_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-view-invoice/div/div[1]/div[1]/div[1]/div/div[2]/div/app-dropdown"
-            self.browser_wrapper.click_element(dropdown_xpath)
-            time.sleep(1)
-
-            list_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-view-invoice/div/div[1]/div[1]/div[1]/div/div[2]/div/app-dropdown/div[1]/div/div[2]/ul"
-
-            # Usar JavaScript para obtener todas las opciones
-            options_text = self.browser_wrapper.page.evaluate(
-                f"""
-                () => {{
-                    const list = document.evaluate("{list_xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    if (list) {{
-                        const items = list.querySelectorAll('li');
-                        return Array.from(items).map(item => item.textContent.trim());
-                    }}
-                    return [];
-                }}
-            """
-            )
-
-            if not options_text:
-                print("No se pudieron obtener las opciones del dropdown")
+            # Wait for invoice cards to be visible
+            invoice_card_xpath = "//div[contains(@class, 'invoice-card')]"
+            if not self.browser_wrapper.is_element_visible(invoice_card_xpath, timeout=15000):
+                self.logger.error("No invoice cards visible on page")
                 return None
 
-            print(f"Opciones disponibles: {options_text}")
+            # Find all invoice cards using Playwright's query_selector_all
+            page = self.browser_wrapper.page
+            invoice_cards = page.query_selector_all(".invoice-card")
 
-            # Buscar la opcion mas cercana basada en las fechas del billing cycle
-            closest_option = None
-            min_diff = float("inf")
+            self.logger.info(f"Found {len(invoice_cards)} invoice cards")
 
-            for option in options_text:
-                try:
-                    # Ignorar "Request older bills here"
-                    if "request older" in option.lower():
-                        continue
+            for idx, card in enumerate(invoice_cards):
+                # Get the month text from span.fs-20
+                month_span = card.query_selector("span.fs-20")
+                if month_span:
+                    month_text = month_span.inner_text().strip()
+                    self.logger.info(f"Card {idx + 1}: {month_text}")
 
-                    # Parsear fechas del formato "Jun 27, 2025 - Jul 26, 2025"
-                    if " - " in option:
-                        date_parts = option.split(" - ")
-                        if len(date_parts) == 2:
-                            # Comparar con end_date del billing cycle
-                            option_end_str = date_parts[1].strip()
-                            try:
-                                option_end_date = datetime.strptime(option_end_str, "%b %d, %Y")
-                                diff = abs((option_end_date - end_date).days)
-                                if diff < min_diff:
-                                    min_diff = diff
-                                    closest_option = option
-                            except:
-                                continue
-                except:
-                    continue
+                    if month_text == target_month:
+                        self.logger.info(f"Found matching invoice card: {month_text}")
 
-            if closest_option:
-                print(f"Opcion mas cercana encontrada: {closest_option}")
-                return closest_option
+                        # Find the download icon
+                        download_icon = card.query_selector("span.Icon--download")
+                        if download_icon:
+                            self.logger.info("Downloading PDF invoice...")
 
-            print("No se pudo encontrar una opcion adecuada")
+                            # Use expect_download_and_click for reliable download
+                            download_xpath = (
+                                f"(//div[contains(@class, 'invoice-card')])[{idx + 1}]"
+                                "//span[contains(@class, 'Icon--download')]"
+                            )
+                            file_path = self.browser_wrapper.expect_download_and_click(
+                                download_xpath,
+                                timeout=60000,
+                                downloads_dir=self.job_downloads_dir,
+                            )
+
+                            if file_path:
+                                self.logger.info(f"Download completed: {file_path}")
+                                return file_path
+                            else:
+                                self.logger.error("expect_download_and_click returned None")
+                                return None
+                        else:
+                            self.logger.error("Download icon not found in matching card")
+                            return None
+
+            self.logger.error(f"No matching invoice card found for {target_month}")
             return None
 
         except Exception as e:
-            print(f"Error buscando opcion de fecha: {str(e)}")
+            self.logger.error(f"Error downloading invoice: {str(e)}")
             return None
-
-    def _select_date_option(self, target_option: str) -> bool:
-        """Selecciona la opcion de fecha especifica en el dropdown."""
-        try:
-            # Buscar y hacer clic en la opcion especifica
-            list_xpath = "/html/body/app-root/app-secure-layout/div/main/div/app-view-invoice/div/div[1]/div[1]/div[1]/div/div[2]/div/app-dropdown/div[1]/div/div[2]/ul"
-
-            # Usar JavaScript para encontrar y hacer clic en la opcion
-            success = self.browser_wrapper.page.evaluate(
-                f"""
-                () => {{
-                    const list = document.evaluate("{list_xpath}", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    if (list) {{
-                        const items = list.querySelectorAll('li');
-                        for (let item of items) {{
-                            if (item.textContent.trim() === "{target_option}") {{
-                                item.click();
-                                return true;
-                            }}
-                        }}
-                    }}
-                    return false;
-                }}
-            """
-            )
-
-            if success:
-                print(f"Seleccionado: {target_option}")
-                time.sleep(2)
-                return True
-            else:
-                print(f"No se pudo seleccionar: {target_option}")
-                return False
-
-        except Exception as e:
-            print(f"Error seleccionando opcion de fecha: {str(e)}")
-            return False
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de Verizon."""
+        """Resets to Verizon main screen."""
         try:
-            print("Reseteando a dashboard de Verizon...")
-            dashboard_url = "https://mb.verizonwireless.com/mbt/secure/index?appName=esm#/esm/dashboard"
-            self.browser_wrapper.goto(dashboard_url)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
-            print("Reset completado")
+            self.logger.info("Resetting to Verizon main screen...")
+            home_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[1]/div/a'
+
+            if self.browser_wrapper.is_element_visible(home_xpath, timeout=5000):
+                self.browser_wrapper.click_element(home_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info("Reset completed")
+
         except Exception as e:
-            print(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error resetting: {str(e)}")

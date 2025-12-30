@@ -1,10 +1,12 @@
 import logging
 import os
 import time
+from pathlib import Path
 from typing import Optional
 
 import requests
 
+from mfa.infrastructure.verizon_captcha_solver import extract_text_from_image
 from web_scrapers.domain.entities.auth_strategies import AuthBaseStrategy, MFACodeError
 from web_scrapers.domain.entities.session import Credentials
 from web_scrapers.domain.enums import CarrierPortalUrls
@@ -755,82 +757,222 @@ class VerizonAuthStrategy(AuthBaseStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def login(self, credentials: Credentials) -> bool:
         try:
-            print("Starting login in Verizon...")
+            self.logger.info("Starting login in Verizon...")
 
             self.browser_wrapper.goto(self.get_login_url())
             self.browser_wrapper.wait_for_page_load(60000)
             time.sleep(3)
 
-            username_xpath = (
-                "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[1]/input[1]"
-            )
-            print(f"Entering email: {credentials.username}")
-            self.browser_wrapper.type_text(username_xpath, credentials.username)
-            time.sleep(1)
+            # First login attempt
+            if not self._fill_login_form_and_submit(credentials):
+                return False
 
-            password_xpath = (
-                "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[2]/input[1]"
-            )
-            print("Entering password...")
-            self.browser_wrapper.type_text(password_xpath, credentials.password)
-            time.sleep(1)
+            time.sleep(10)
 
-            login_button_xpath = (
-                "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[4]/button[1]"
-            )
-            print("Clicking Login...")
-            self.browser_wrapper.click_element(login_button_xpath)
+            # Check for CAPTCHA after first login click
+            captcha_img_xpath = '//*[@id="captchaImg"]'
+            if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
+                self.logger.info("CAPTCHA detected after login attempt...")
 
-            self.browser_wrapper.wait_for_page_load()
+                # First CAPTCHA attempt
+                if not self._solve_captcha_and_submit():
+                    return False
+
+                time.sleep(10)
+
+                # Check if CAPTCHA still exists (failed first attempt)
+                if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
+                    self.logger.warning("CAPTCHA still present")
+
+                    # Second attempt: refill entire form
+                    if not self._fill_login_form_and_submit(credentials):
+                        return False
+
+                    if not self._solve_captcha_and_submit():
+                        self.logger.error("CAPTCHA failed on second attempt")
+                        return False
+
+                    time.sleep(10)
+
+                    # If CAPTCHA still exists after second attempt, fail
+                    if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
+                        self.logger.error("CAPTCHA failed after two attempts")
+                        return False
+
+            # Wait a bit for page to settle
             time.sleep(5)
 
+            # First check if already logged in (no MFA required)
+            if self.is_logged_in():
+                self.logger.info("Login successful in Verizon (no MFA required)")
+                return True
+
+            # Check for MFA
             if not self._handle_2fa_if_present(credentials):
-                print("2FA failed - interrupting login")
+                self.logger.error("2FA failed - interrupting login")
                 return False
 
             if self.is_logged_in():
-                print("Login successful in Verizon")
+                self.logger.info("Login successful in Verizon")
                 return True
             else:
-                print("Login failed in Verizon")
+                self.logger.error("Login failed in Verizon")
                 return False
 
         except MFACodeError as e:
-            print(f"MFA error during login in Verizon: {str(e)}")
+            self.logger.error(f"MFA error during login in Verizon: {str(e)}")
             return False
         except Exception as e:
-            print(f"Error during login in Verizon: {str(e)}")
+            self.logger.error(f"Error during login in Verizon: {str(e)}")
             return False
+
+    def _fill_login_form_and_submit(self, credentials: Credentials) -> bool:
+        """Fill the login form with username and password, then click login."""
+        try:
+            username_xpath = '//*[@id="ilogin_userid"]'
+            password_xpath = '//*[@id="ilogin_password"]'
+            login_button_xpath = '//*[@id="ilogin_login_button"]'
+
+            self.logger.info(f"Entering email: {credentials.username}")
+            self.browser_wrapper.clear_and_type(username_xpath, credentials.username)
+            time.sleep(1)
+
+            self.logger.info("Entering password...")
+            self.browser_wrapper.clear_and_type(password_xpath, credentials.password)
+            time.sleep(1)
+
+            self.logger.info("Clicking Login...")
+            self.browser_wrapper.click_element(login_button_xpath)
+            time.sleep(3)
+            return True
+        except Exception as e:
+            self.logger.error(f"Error filling login form: {str(e)}")
+            return False
+
+    def _solve_captcha_and_submit(self) -> bool:
+        """Solve the CAPTCHA and click login."""
+        try:
+            captcha_input_xpath = '//*[@id="captchaInput"]'
+            login_button_xpath = '//*[@id="ilogin_login_button"]'
+
+            screenshot_path = self._take_captcha_screenshot()
+            if not screenshot_path:
+                self.logger.error("Failed to take CAPTCHA screenshot")
+                return False
+
+            captcha_solution = self.send_image_to_ia(screenshot_path)
+            self.logger.info(f"CAPTCHA solution (raw): {captcha_solution}")
+
+            if not captcha_solution:
+                self.logger.error("Failed to get CAPTCHA solution from AI")
+                return False
+
+            # Remove any spaces from the CAPTCHA solution
+            captcha_solution = captcha_solution.replace(" ", "")
+            self.logger.info(f"CAPTCHA solution (cleaned): {captcha_solution}")
+
+            self.logger.info("Entering CAPTCHA solution...")
+            self.browser_wrapper.clear_and_type(captcha_input_xpath, captcha_solution)
+            time.sleep(1)
+
+            self.logger.info("Clicking Login after CAPTCHA...")
+            self.browser_wrapper.click_element(login_button_xpath)
+            return True
+        except Exception as e:
+            self.logger.error(f"Error solving CAPTCHA: {str(e)}")
+            return False
+
+    def _take_captcha_screenshot(self) -> Optional[str]:
+        """Take a screenshot of the CAPTCHA element and save it to captcha_screenshots folder."""
+        import os
+        from datetime import datetime
+
+        try:
+            # Create captcha_screenshots folder if it doesn't exist
+            screenshots_dir = os.path.join(os.getcwd(), "captcha_screenshots")
+            os.makedirs(screenshots_dir, exist_ok=True)
+
+            # Generate unique filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"captcha_{timestamp}.png"
+            filepath = os.path.join(screenshots_dir, filename)
+
+            # Take screenshot of the CAPTCHA element
+            captcha_element = self.browser_wrapper.page.locator('#captchaImg')
+            captcha_element.screenshot(path=filepath)
+
+            self.logger.info(f"CAPTCHA screenshot saved to: {filepath}")
+            return filepath
+
+        except Exception as e:
+            self.logger.error(f"Error taking CAPTCHA screenshot: {str(e)}")
+            return None
+
+    def send_image_to_ia(self, image_path: str) -> Optional[str]:
+        """Send CAPTCHA image to AI service for solving."""
+        try:
+            self.logger.info(f"Sending image to AI for CAPTCHA solving: {image_path}")
+            result = extract_text_from_image(Path(image_path))
+            self.logger.info(f"AI returned CAPTCHA text: {result}")
+            return result
+        except Exception as e:
+            self.logger.error(f"Error solving CAPTCHA with AI: {str(e)}")
+            return None
+        finally:
+            try:
+                Path(image_path).unlink()
+                self.logger.info(f"Deleted CAPTCHA image: {image_path}")
+            except Exception as e:
+                self.logger.warning(f"Could not delete CAPTCHA image: {str(e)}")
 
     def logout(self) -> bool:
         try:
-            print("Starting logout in Verizon...")
+            self.logger.info("Starting logout in Verizon...")
 
-            user_icon_xpath = "/html/body/app-root/app-secure-layout/app-header/div/div[1]/div/div/div[1]/div[2]/header/div/div/div[3]/nav/ul/li/div[1]"
-            print("Clicking user icon...")
-            self.browser_wrapper.click_element(user_icon_xpath)
-            time.sleep(2)
+            # Click on user menu
+            user_menu_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[3]/nav/ul/li/div[1]'
+            self.logger.info("Clicking user menu...")
 
-            sign_out_xpath = "/html/body/app-root/app-secure-layout/app-header/div/div[1]/div/div/div[1]/div[2]/header/div/div/div[3]/nav/ul/li/div[2]/ul/li[6]/a"
-            print("Clicking Sign Out...")
-            self.browser_wrapper.click_element(sign_out_xpath)
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
+            if self.browser_wrapper.is_element_visible(user_menu_xpath, timeout=5000):
+                self.browser_wrapper.click_element(user_menu_xpath)
+                time.sleep(2)
+            else:
+                self.logger.error("User menu not found")
+                return False
 
-            print("Logout successful in Verizon")
+            # Click on logout
+            logout_xpath = '//*[@id="gn-logout-li-item"]/a'
+            self.logger.info("Clicking Logout...")
+
+            if self.browser_wrapper.is_element_visible(logout_xpath, timeout=5000):
+                self.browser_wrapper.click_element(logout_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+            else:
+                self.logger.error("Logout button not found")
+                return False
+
+            self.logger.info("Logout successful in Verizon")
             return not self.is_logged_in()
 
         except Exception as e:
-            print(f"Error during logout in Verizon: {str(e)}")
+            self.logger.error(f"Error during logout in Verizon: {str(e)}")
             return False
 
     def is_logged_in(self) -> bool:
+        """Check if logged in by looking for the Welcome label."""
         try:
-            user_icon_xpath = "/html/body/app-root/app-secure-layout/app-header/div/div[1]/div/div/div[1]/div[2]/header/div/div/div[3]/nav/ul/li/div[1]"
-            return self.browser_wrapper.is_element_visible(user_icon_xpath, timeout=10000)
+            welcome_label_xpath = '//*[@id="searchContainer"]/div[2]/label'
+            if self.browser_wrapper.is_element_visible(welcome_label_xpath, timeout=10000):
+                label_text = self.browser_wrapper.page.locator(welcome_label_xpath).text_content()
+                if label_text and "welcome" in label_text.lower():
+                    self.logger.info(f"Welcome label found: {label_text.strip()}")
+                    return True
+            return False
         except Exception:
             return False
 
@@ -841,59 +983,215 @@ class VerizonAuthStrategy(AuthBaseStrategy):
         return "/html/body/app-root/app-secure-layout/app-header/div/div[1]/div/div/div[1]/div[2]/header/div/div/div[3]/nav/ul/li/div[2]/ul/li[6]/a"
 
     def get_username_xpath(self) -> str:
-        return "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[1]/input[1]"
+        return '//*[@id="ilogin_userid"]'
 
     def get_password_xpath(self) -> str:
-        return "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[2]/input[1]"
+        return '//*[@id="ilogin_password"]'
 
     def get_login_button_xpath(self) -> str:
-        return "/html[1]/body[1]/v-app[1]/div[1]/div[1]/div[1]/div[2]/div[1]/div[1]/form[1]/div[4]/button[1]"
+        return '//*[@id="ilogin_login_button"]'
 
     def _handle_2fa_if_present(self, credentials: Credentials) -> bool:
+        """Detects and handles Verizon MFA by selecting the best Email option."""
         try:
-            text_option_xpath = "/html/body/v-app/div/div/div/div[2]/div/div/div/div/div[2]/li/div[1]/div"
+            # Check if MFA options list is visible (short timeout since we already checked is_logged_in)
+            mfa_list_xpath = '//*[@id="app"]/div/div/div/div[2]/div/div/div/div/div/div[2]/li'
 
-            if self.browser_wrapper.is_element_visible(text_option_xpath, timeout=40000):
-                print("2FA field detected. Starting verification process...")
+            if self.browser_wrapper.is_element_visible(mfa_list_xpath, timeout=10000):
+                self.logger.info("MFA options detected. Starting verification process...")
                 return self._process_2fa(credentials)
             else:
-                print("No 2FA field detected")
-                time.sleep(10)
-                return True
+                self.logger.info("No MFA options detected, checking if logged in...")
+                return self.is_logged_in()
 
         except MFACodeError:
             raise
         except Exception as e:
-            print(f"Error verifying 2FA: {str(e)}")
-            return True
+            self.logger.error(f"Error verifying 2FA: {str(e)}")
+            return self.is_logged_in()
 
     def _process_2fa(self, credentials: Credentials) -> bool:
-        text_option_xpath = "/html/body/v-app/div/div/div/div[2]/div/div/div/div/div[2]/li/div[1]/div"
-        code_input_xpath = "/html/body/v-app/div/div/div/div/div[2]/div[1]/div/div/div/div[2]/form/div[2]/input"
-        continue_button_xpath = "/html/body/v-app/div/div/div/div/div[2]/div[1]/div/div/div/div[2]/form/div[3]/button"
+        """Process 2FA by selecting the best Email option and confirming via link."""
+        # Find and click the best Email option
+        self.logger.info("Finding best Email option for MFA...")
+        email_option = self._find_best_email_option(credentials.username)
 
-        print("Selecting text message option...")
-        self.browser_wrapper.click_element(text_option_xpath)
+        if email_option is None:
+            self.logger.info("Manual MFA resolution completed")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(5)
+            return True
+
+        # Click the selected email option using its section ID
+        section_id = email_option.get("sectionId")
+        if section_id:
+            self.logger.info(f"Selecting Email option with ID: {section_id}...")
+            self.browser_wrapper.click_element(f'//*[@id="{section_id}"]')
+        else:
+            # Fallback: use index-based selector
+            index = email_option.get("index", 1)
+            self.logger.info(f"Selecting Email option at index {index}...")
+            option_xpath = f'(//*[contains(@class, "pwdless_options_section")])[{index}]'
+            self.browser_wrapper.click_element(option_xpath)
         time.sleep(2)
 
-        print("Waiting for MFA code from SSE endpoint...")
+        self.logger.info("Waiting for MFA link from SSE endpoint...")
         endpoint_url = f"{self.webhook_url}/api/v1/verizon"
-        sms_code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
+        mfa_link = self._consume_mfa_sse_stream(endpoint_url, credentials.username, event_type="link")
 
-        print(f"Entering code: {sms_code}")
-        self.browser_wrapper.click_element(code_input_xpath)
-        self.browser_wrapper.clear_and_type(code_input_xpath, sms_code)
-        time.sleep(1)
+        self.logger.info(f"MFA link received: {mfa_link}")
 
-        print("Clicking Continue...")
-        self.browser_wrapper.click_element(continue_button_xpath)
-
-        self.browser_wrapper.wait_for_page_load()
-        time.sleep(5)
-
-        if self.browser_wrapper.is_element_visible(code_input_xpath, timeout=3000):
-            print("2FA validation failed - field still visible")
+        # Open link in new tab and confirm Allow
+        if not self._confirm_mfa_in_new_tab(mfa_link):
+            self.logger.error("Failed to confirm MFA in new tab")
             return False
 
-        print("2FA validation successful")
+        # Wait for main page to update after MFA confirmation
+        self.logger.info("Waiting for main page to update after MFA confirmation...")
+        time.sleep(10)
+        self.browser_wrapper.wait_for_page_load()
+
+        self.logger.info("2FA validation completed")
         return True
+
+    def _confirm_mfa_in_new_tab(self, mfa_link: str) -> bool:
+        """Open MFA link in new tab, click Allow and confirm, then return to original tab."""
+        allow_label_xpath = '//*[@id="dvbtn"]/form/div[1]/label'
+        confirm_button_xpath = '//*[@id="dvbtn"]/button'
+
+        try:
+            # Save reference to original page
+            original_page = self.browser_wrapper.page
+
+            # Open new tab with the MFA link
+            self.logger.info("Opening MFA link in new tab...")
+            new_page = self.browser_wrapper.context.new_page()
+            self.browser_wrapper.page = new_page
+            new_page.goto(mfa_link)
+            new_page.wait_for_load_state("networkidle")
+            time.sleep(3)
+
+            # Click on Allow label
+            self.logger.info("Looking for Allow option...")
+            if self.browser_wrapper.is_element_visible(allow_label_xpath, timeout=10000):
+                label_text = new_page.locator(allow_label_xpath).text_content()
+                self.logger.info(f"Found label: {label_text}")
+                if label_text and "allow" in label_text.lower():
+                    self.logger.info("Clicking Allow option...")
+                    self.browser_wrapper.click_element(allow_label_xpath)
+                    time.sleep(2)
+                else:
+                    self.logger.warning(f"Label does not contain 'Allow': {label_text}")
+            else:
+                self.logger.error("Allow label not visible")
+                self.browser_wrapper.close_current_tab()
+                self.browser_wrapper.page = original_page
+                return False
+
+            # Click confirm button
+            self.logger.info("Clicking confirm button...")
+            if self.browser_wrapper.is_element_visible(confirm_button_xpath, timeout=5000):
+                self.browser_wrapper.click_element(confirm_button_xpath)
+                time.sleep(3)
+            else:
+                self.logger.error("Confirm button not visible")
+                self.browser_wrapper.close_current_tab()
+                self.browser_wrapper.page = original_page
+                return False
+
+            # Close the MFA tab and return to original
+            self.logger.info("MFA confirmed, closing tab and returning to original...")
+            self.browser_wrapper.close_current_tab()
+            self.browser_wrapper.page = original_page
+            original_page.bring_to_front()
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error confirming MFA in new tab: {str(e)}")
+            # Try to recover by returning to original page
+            try:
+                self.browser_wrapper.page = original_page
+                original_page.bring_to_front()
+            except:
+                pass
+            return False
+
+    def _find_best_email_option(self, login_email: str) -> Optional[dict]:
+        """
+        Find the best Email option from the MFA options list.
+
+        Logic:
+        1. Get all MFA options from the list
+        2. Filter only options with method="Email"
+        3. If only one Email option, use it
+        4. If two Email options, use the one that is NOT "s***n@e***.com"
+        """
+        try:
+            # Get all MFA options using JavaScript
+            mfa_options = self.browser_wrapper.page.evaluate(
+                """
+                () => {
+                    const options = [];
+                    const optionSections = document.querySelectorAll('#app li .pwdless_options_section');
+
+                    optionSections.forEach((section, index) => {
+                        const deliveryOption = section.querySelector('.delivery_option_with_msg a');
+                        const contactEl = section.querySelector('.pwdless_delivery_link');
+
+                        if (deliveryOption && contactEl) {
+                            const fullText = deliveryOption.textContent;
+                            const method = fullText.split('\\n')[0].trim();
+
+                            options.push({
+                                index: index + 1,
+                                method: method,
+                                contact: contactEl.textContent.trim(),
+                                sectionId: section.id || null
+                            });
+                        }
+                    });
+
+                    return options;
+                }
+            """
+            )
+
+            self.logger.info(f"Found {len(mfa_options)} MFA options")
+
+            # Print all options found
+            print(f"\n{'='*60}")
+            print("ALL MFA OPTIONS FOUND:")
+            for opt in mfa_options:
+                print(f"  [{opt['index']}] Method: {opt['method']}, Contact: {opt['contact']}, ID: {opt['sectionId']}")
+            print(f"{'='*60}\n")
+
+            # Filter only Email options (method starts with "Email")
+            email_options = [opt for opt in mfa_options if opt["method"].lower().startswith("email")]
+
+            if not email_options:
+                self.logger.warning("No Email options found in MFA list")
+                print("Waiting 120 seconds for manual MFA resolution...")
+                time.sleep(120)
+                return None
+
+            self.logger.info(f"Found {len(email_options)} Email option(s)")
+
+            # If only one Email option, return it
+            if len(email_options) == 1:
+                self.logger.info(f"Single Email option: {email_options[0]['contact']}")
+                return email_options[0]
+
+            # If two Email options, use the one that is NOT "s***n@e***"
+            excluded_pattern = "s***n@e***"
+            for opt in email_options:
+                if opt["contact"].lower() != excluded_pattern.lower():
+                    self.logger.info(f"Selected Email option: {opt['contact']} (excluded: {excluded_pattern})")
+                    return opt
+
+            # Fallback to first Email option if all match the excluded pattern
+            self.logger.warning(f"All options match excluded pattern, using first: {email_options[0]['contact']}")
+            return email_options[0]
+
+        except Exception as e:
+            self.logger.error(f"Error finding Email option: {str(e)}")
+            return None

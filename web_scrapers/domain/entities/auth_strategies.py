@@ -21,23 +21,26 @@ class AuthBaseStrategy(ABC):
     def __init__(self, browser_wrapper: BrowserWrapper):
         self.browser_wrapper = browser_wrapper
 
-    def _consume_mfa_sse_stream(self, endpoint_url: str, email_alias: str, timeout: int = 310) -> str:
+    def _consume_mfa_sse_stream(
+        self, endpoint_url: str, email_alias: str, timeout: int = 310, event_type: str = "code"
+    ) -> str:
         """
-        Consume the MFA SSE stream endpoint and return the code.
+        Consume the MFA SSE stream endpoint and return the code or link.
 
         Args:
             endpoint_url: The SSE endpoint URL (e.g., "http://localhost:8000/api/bell")
             email_alias: The email alias to use for filtering
             timeout: Request timeout in seconds (default 310 to account for 5-minute SSE timeout)
+            event_type: The event type to listen for ("code" or "link")
 
         Returns:
-            The MFA code as a string
+            The MFA code or link as a string
 
         Raises:
-            MFACodeError: If the stream returns an error event or fails to get the code
+            MFACodeError: If the stream returns an error event or fails to get the code/link
         """
         url = f"{endpoint_url}?email_alias={email_alias}"
-        print(f"🔗 Connecting to MFA SSE stream: {url}")
+        print(f"Connecting to MFA SSE stream: {url}")
 
         try:
             with requests.get(url, stream=True, timeout=timeout) as response:
@@ -59,20 +62,19 @@ class AuthBaseStrategy(ABC):
 
                         if current_event == "endpoint_error":
                             error_msg = data.get("message", "Unknown error from MFA endpoint")
-                            print(f"❌ MFA endpoint error: {error_msg}")
+                            print(f"MFA endpoint error: {error_msg}")
                             raise MFACodeError(error_msg)
 
-                        if current_event == "code":
-                            code = data.get("code")
-                            if code:
-                                print(f"✅ MFA code received: {code}")
-                                return str(code)
+                        if current_event == event_type:
+                            value = data.get(event_type)
+                            if value:
+                                print(f"MFA {event_type} received: {value}")
+                                return str(value)
 
                         if current_event == "done":
-                            # Stream ended without code
-                            raise MFACodeError("Stream ended without providing a code")
+                            raise MFACodeError(f"Stream ended without providing a {event_type}")
 
-            raise MFACodeError("Stream closed unexpectedly without code or error")
+            raise MFACodeError(f"Stream closed unexpectedly without {event_type} or error")
 
         except requests.exceptions.Timeout:
             raise MFACodeError("Timeout connecting to MFA SSE endpoint")
