@@ -66,7 +66,7 @@ async def code_extractor(carrier: str, email_alias: str, carrier_from_email: str
         yield sse_event("done", {"carrier": carrier})
         return
 
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(timezone.utc) - timedelta(minutes=1)
 
     while elapsed < TIMEOUT_SECONDS:
         messages = await get_messages_async(checker, email_alias, start_time, carrier_from_email)
@@ -115,7 +115,8 @@ async def get_telus_code(email_alias: str = Query(...)):
 
 @router.get("/tmobile")
 async def get_tmobile_code(email_alias: str = Query(...)):
-    carrier_from_email = "tmobile@example.com"
+    carrier_from_email = "customercare@notifications.t-mobile.com"
+    email_alias = "notifications@expertel.com"  # T-Mobile emails arrive at this mailbox
     return EventSourceResponse(code_extractor("tmobile", email_alias, carrier_from_email))
 
 

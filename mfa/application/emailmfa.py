@@ -152,7 +152,7 @@ def main():
 
     now_utc = datetime.now(timezone.utc)
     messages = checker.get_messages(
-        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10, from_email="VZWMail@ecrmemail.verizonwireless.com"
+        USER_EMAIL, date_filter=now_utc - timedelta(hours=2), top=10, from_email="customercare@notifications.t-mobile.com"
     )
 
     if messages:

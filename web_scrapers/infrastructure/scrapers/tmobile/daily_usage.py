@@ -1,7 +1,6 @@
+import logging
 import os
-import re
 import time
-from datetime import datetime
 from typing import Any, List, Optional
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -16,122 +15,186 @@ os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 
 class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
-    """Scraper de uso diario para T-Mobile con logica de seleccion de periodo y descarga CSV."""
+    """Scraper de uso diario para T-Mobile.
+
+    Flujo:
+    1. Click en Billing en el menu lateral
+    2. Buscar cuenta por numero en el input de filtro
+    3. Click en el row de la cuenta (unico resultado)
+    4. Click en tab "Usage"
+    5. Seleccionar "All Usage" en el dropdown
+    6. Click en Download para descargar CSV
+    """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
         super().__init__(browser_wrapper, job_id=job_id)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navega a la seccion de billing y encuentra el primer row del account."""
+        """Navega a Billing y encuentra la cuenta."""
         try:
-            print("Navegando a la seccion de billing para uso diario...")
+            self.logger.info("Navegando a la seccion de Billing para uso diario...")
 
-            # 1. Click en billing section
-            billing_section_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav/div/mat-nav-list[1]/mat-accordion/mat-panel-title/mat-list-item"
-            if not self.browser_wrapper.is_element_visible(billing_section_xpath, timeout=10000):
-                print("Seccion de billing no encontrada")
+            # 1. Click en Billing en el menu lateral
+            if not self._navigate_to_billing():
+                self.logger.error("No se pudo navegar a Billing")
                 return None
 
-            self.browser_wrapper.click_element(billing_section_xpath)
-            time.sleep(3)
-
-            # 2. Buscar y llenar el input de cuenta
-            search_input_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div/div/app-billing/div/app-search/div/mat-form-field/div[1]/div/div[3]/input"
-            if not self.browser_wrapper.is_element_visible(search_input_xpath, timeout=10000):
-                print("Campo de busqueda no encontrado")
+            # 2. Buscar la cuenta
+            account_number = billing_cycle.account.number if billing_cycle.account else None
+            if not account_number:
+                self.logger.error("No se encontro el numero de cuenta en billing_cycle")
                 return None
 
-            print(f"Buscando cuenta: {billing_cycle.account.number}")
-            self.browser_wrapper.fill_input(search_input_xpath, billing_cycle.account.number)
-            time.sleep(1)
-
-            # 3. Presionar Enter
-            self.browser_wrapper.press_key(search_input_xpath, "Enter")
-            time.sleep(5)
-
-            # 4. Click en el primer row
-            first_row_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-billing/div/section/div[1]/mat-grid-list"
-            if not self.browser_wrapper.is_element_visible(first_row_xpath, timeout=10000):
-                print("Primer row no encontrado")
+            if not self._search_account(account_number):
+                self.logger.error(f"No se pudo buscar la cuenta {account_number}")
                 return None
 
-            self.browser_wrapper.click_element(first_row_xpath)
-            time.sleep(5)
+            # 3. Click en el row de la cuenta
+            if not self._click_account_row():
+                self.logger.error("No se pudo hacer click en el row de la cuenta")
+                return None
 
-            print("Seccion de uso diario encontrada")
-            return {"section": "daily_usage", "account_number": billing_cycle.account.number}
+            self.logger.info("Seccion de Daily Usage encontrada correctamente")
+            return {"section": "daily_usage", "account_number": account_number}
 
         except Exception as e:
-            print(f"Error navegando a seccion de archivos: {str(e)}")
+            self.logger.error(f"Error navegando a seccion de archivos: {str(e)}")
             return None
+
+    def _navigate_to_billing(self) -> bool:
+        """Navega a la seccion Billing en el menu lateral.
+
+        Billing es un item directo en el sidenav con id='billingApp', no un submenu.
+        """
+        try:
+            self.logger.info("Buscando seccion Billing en el menu lateral...")
+
+            # Billing es un item directo con id="billingApp"
+            billing_by_id_xpath = '//*[@id="billingApp"]'
+            billing_by_text_xpath = "//mat-panel-title//span[contains(text(), 'Billing')]"
+
+            if self.browser_wrapper.is_element_visible(billing_by_id_xpath, timeout=10000):
+                self.logger.info("Click en Billing (por ID)...")
+                self.browser_wrapper.click_element(billing_by_id_xpath)
+            elif self.browser_wrapper.is_element_visible(billing_by_text_xpath, timeout=5000):
+                self.logger.info("Click en Billing (por texto)...")
+                self.browser_wrapper.click_element(billing_by_text_xpath)
+            else:
+                self.logger.error("No se encontro Billing en el menu lateral")
+                return False
+
+            time.sleep(5)
+            self.logger.info("Navegacion a Billing completada")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error navegando a Billing: {str(e)}")
+            return False
+
+    def _search_account(self, account_number: str) -> bool:
+        """Busca la cuenta por numero en el input de filtro."""
+        try:
+            self.logger.info(f"Buscando cuenta: {account_number}")
+
+            # Input de busqueda de cuenta - selector mas general sin numero especifico
+            # El ID puede variar (mat-input-1, mat-input-2, etc.)
+            search_input_xpath = "//input[contains(@id, 'mat-input')]"
+            search_input_placeholder_xpath = "//input[@placeholder='Search']"
+
+            if self.browser_wrapper.is_element_visible(search_input_xpath, timeout=10000):
+                self.logger.info("Input de busqueda encontrado (por mat-input)")
+                self.browser_wrapper.clear_and_type(search_input_xpath, account_number)
+            elif self.browser_wrapper.is_element_visible(search_input_placeholder_xpath, timeout=5000):
+                self.logger.info("Input de busqueda encontrado (por placeholder)")
+                self.browser_wrapper.clear_and_type(search_input_placeholder_xpath, account_number)
+            else:
+                self.logger.error("Input de busqueda de cuenta no encontrado")
+                return False
+
+            time.sleep(1)
+
+            # Presionar Enter
+            self.browser_wrapper.page.keyboard.press("Enter")
+            time.sleep(5)
+
+            self.logger.info(f"Busqueda de cuenta {account_number} completada")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error buscando cuenta: {str(e)}")
+            return False
+
+    def _click_account_row(self) -> bool:
+        """Hace click en el row de la cuenta (unico resultado)."""
+        try:
+            self.logger.info("Buscando row de la cuenta...")
+
+            # Seccion de la tabla
+            table_section_xpath = '//*[@id="tfb-billing-container"]/div[1]/div/app-billing/div/section'
+
+            if not self.browser_wrapper.is_element_visible(table_section_xpath, timeout=10000):
+                self.logger.error("Seccion de tabla no encontrada")
+                return False
+
+            # Click en el row de datos (billinglist-data)
+            row_xpath = "//div[contains(@class, 'billinglist-data')]"
+
+            if not self.browser_wrapper.is_element_visible(row_xpath, timeout=5000):
+                self.logger.error("Row de cuenta no encontrado")
+                return False
+
+            self.logger.info("Haciendo click en el row de la cuenta...")
+            self.browser_wrapper.click_element(row_xpath)
+            time.sleep(5)
+
+            self.logger.info("Click en row de cuenta completado")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error haciendo click en row de cuenta: {str(e)}")
+            return False
 
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga los archivos de uso diario de T-Mobile con seleccion de periodo."""
+        """Descarga el archivo de uso diario de T-Mobile.
+
+        Flujo:
+        1. Click en tab "Usage"
+        2. Seleccionar "All Usage" en el dropdown
+        3. Click en Download
+        """
         downloaded_files = []
 
-        # Mapear BillingCycleDailyUsageFile
+        # Obtener el DailyUsageFile
         daily_usage_file = None
         if billing_cycle.daily_usage_files:
             daily_usage_file = billing_cycle.daily_usage_files[0]
-            print(f"Archivo de uso diario encontrado: ID {daily_usage_file.id}")
+            self.logger.info(f"DailyUsageFile encontrado: ID {daily_usage_file.id}")
 
         try:
-            print("Iniciando descarga de uso diario...")
+            self.logger.info("=== INICIANDO DESCARGA DE USO DIARIO T-MOBILE ===")
 
-            # 1. Click en usage tab
-            usage_tab_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/app-digital-billing-tabs/div/div[2]/mat-tab-group/mat-tab-header/div/div/div/div[2]/div"
-            if self.browser_wrapper.is_element_visible(usage_tab_xpath, timeout=10000):
-                print("Haciendo click en usage tab...")
-                self.browser_wrapper.click_element(usage_tab_xpath)
-                time.sleep(3)
-            else:
-                print("Usage tab no encontrado")
+            # 1. Click en tab "Usage"
+            if not self._click_usage_tab():
+                self.logger.error("No se pudo hacer click en tab Usage")
                 return downloaded_files
 
-            # 2. Click en date selector
-            date_selector_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/div/div/div[1]/mat-form-field/div[1]/div[2]/div/mat-select"
-            if not self.browser_wrapper.is_element_visible(date_selector_xpath, timeout=10000):
-                print("Date selector no encontrado")
-                return downloaded_files
+            # 2. Seleccionar "All Usage" en el dropdown
+            if not self._select_all_usage():
+                self.logger.warning("No se pudo seleccionar 'All Usage', continuando...")
 
-            print("Abriendo selector de fechas...")
-            self.browser_wrapper.click_element(date_selector_xpath)
-            time.sleep(3)
+            time.sleep(2)
 
-            # 3. Seleccionar el periodo mas cercano al billing_cycle.end_date
-            selected_option = self._select_best_billing_period(billing_cycle.end_date)
-            if not selected_option:
-                print("No se pudo seleccionar el periodo de facturacion")
-                return downloaded_files
-
-            time.sleep(3)
-
-            # 4. Configurar el dropdown "View by" para seleccionar "All usage"
-            if not self._select_all_usage_option():
-                print("No se pudo seleccionar 'All usage', continuando...")
-
-            time.sleep(3)
-
-            # 5. Click en download csv
-            download_csv_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/app-digital-billing-tabs/div/div[2]/mat-tab-group/div/mat-tab-body[4]/div/tfb-usage/div/div[2]/div[1]/tfb-usage-table/div/tfb-card/mat-card/div[2]/div[1]/div[2]/div/span"
-            if not self.browser_wrapper.is_element_visible(download_csv_xpath, timeout=10000):
-                print("Boton download CSV no encontrado")
-                return downloaded_files
-
-            print("Haciendo click en download CSV...")
-
-            file_path = self.browser_wrapper.expect_download_and_click(
-                download_csv_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
-            )
-
+            # 3. Click en Download
+            file_path = self._click_download()
             if file_path:
                 actual_filename = os.path.basename(file_path)
-                print(f"Archivo descargado: {actual_filename}")
+                self.logger.info(f"Archivo descargado: {actual_filename}")
 
                 file_info = FileDownloadInfo(
-                    file_id=daily_usage_file.id if daily_usage_file else 1,
+                    file_id=daily_usage_file.id if daily_usage_file else 0,
                     file_name=actual_filename,
                     download_url="N/A",
                     file_path=file_path,
@@ -140,184 +203,133 @@ class TMobileDailyUsageScraperStrategy(DailyUsageScraperStrategy):
                 downloaded_files.append(file_info)
 
                 if daily_usage_file:
-                    print(
-                        f"MAPEO CONFIRMADO: {actual_filename} -> BillingCycleDailyUsageFile ID {daily_usage_file.id}"
-                    )
+                    self.logger.info(f"MAPEO CONFIRMADO: {actual_filename} -> DailyUsageFile ID {daily_usage_file.id}")
             else:
-                print("No se pudo descargar el archivo CSV")
+                self.logger.error("No se pudo descargar el archivo")
 
             # Reset a pantalla principal
             self._reset_to_main_screen()
 
-            print(f"Descarga de uso diario completada: {len(downloaded_files)} archivo(s)")
+            # Log resumen
+            self.logger.info(f"\n{'='*60}")
+            self.logger.info("RESUMEN DE DESCARGA DAILY USAGE")
+            self.logger.info(f"{'='*60}")
+            self.logger.info(f"Total archivos descargados: {len(downloaded_files)}")
+            for idx, file_info in enumerate(downloaded_files, 1):
+                if file_info.daily_usage_file:
+                    self.logger.info(
+                        f"   [{idx}] {file_info.file_name} -> DailyUsageFile ID {file_info.daily_usage_file.id}"
+                    )
+                else:
+                    self.logger.info(f"   [{idx}] {file_info.file_name} -> SIN MAPEO")
+            self.logger.info(f"{'='*60}\n")
+
             return downloaded_files
 
         except Exception as e:
-            print(f"Error durante descarga de uso diario: {str(e)}")
+            self.logger.error(f"Error durante descarga de uso diario: {str(e)}")
             try:
                 self._reset_to_main_screen()
             except:
                 pass
             return downloaded_files
 
-    def _select_all_usage_option(self) -> bool:
-        """Selecciona la opcion 'All usage' en el dropdown 'View by'."""
+    def _click_usage_tab(self) -> bool:
+        """Hace click en el tab 'Usage'."""
         try:
-            print("Configurando View by dropdown...")
+            self.logger.info("Buscando tab Usage...")
 
-            # Click en el dropdown "View by"
-            view_by_dropdown_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/app-digital-billing-tabs/div/div[2]/mat-tab-group/div/mat-tab-body[4]/div/tfb-usage/div/div[2]/div[1]/tfb-usage-table/div/tfb-card/mat-card/div[2]/div[1]/div[1]/tfb-dropdown[1]/div/mat-form-field/div/div[1]/div/mat-select"
+            # Buscar tab por texto
+            usage_tab_xpath = "//div[@role='tab']//div[contains(text(), 'Usage')]"
 
-            if not self.browser_wrapper.is_element_visible(view_by_dropdown_xpath, timeout=10000):
-                print("View by dropdown no encontrado")
+            if not self.browser_wrapper.is_element_visible(usage_tab_xpath, timeout=10000):
+                self.logger.error("Tab Usage no encontrado")
                 return False
 
-            print("Abriendo View by dropdown...")
-            self.browser_wrapper.click_element(view_by_dropdown_xpath)
+            self.logger.info("Haciendo click en tab Usage...")
+            self.browser_wrapper.click_element(usage_tab_xpath)
             time.sleep(3)
 
-            # Buscar la opcion "All usage" en el listbox
-            all_usage_option = None
-
-            # Intentar multiples posibles ubicaciones del listbox
-            possible_listbox_xpaths = [
-                "/html/body/div[12]/div[2]/div/div/div",
-                "/html/body/div[11]/div[2]/div/div/div",
-                "/html/body/div[10]/div[2]/div/div/div",
-                "/html/body/div[13]/div[2]/div/div/div",
-            ]
-
-            for listbox_xpath in possible_listbox_xpaths:
-                try:
-                    if self.browser_wrapper.is_element_visible(listbox_xpath, timeout=3000):
-                        # Buscar todas las opciones en este listbox
-                        options = self.browser_wrapper.find_elements_by_xpath(f"{listbox_xpath}//mat-option")
-
-                        for option in options:
-                            option_text = self.browser_wrapper.get_text_from_element(option)
-                            if "All usage" in option_text:
-                                all_usage_option = option
-                                break
-
-                        if all_usage_option:
-                            break
-
-                except Exception as e:
-                    print(f"Error buscando en listbox {listbox_xpath}: {str(e)}")
-                    continue
-
-            if all_usage_option:
-                print("Seleccionando opcion 'All usage'...")
-                self.browser_wrapper.click_element_direct(all_usage_option)
-                time.sleep(2)
-                return True
-            else:
-                print("Opcion 'All usage' no encontrada")
-                return False
+            self.logger.info("Tab Usage seleccionado")
+            return True
 
         except Exception as e:
-            print(f"Error seleccionando 'All usage': {str(e)}")
+            self.logger.error(f"Error haciendo click en tab Usage: {str(e)}")
             return False
 
-    def _select_best_billing_period(self, target_end_date: datetime) -> bool:
-        """Selecciona el periodo de facturacion mas cercano al end_date del billing cycle."""
+    def _select_all_usage(self) -> bool:
+        """Selecciona la opcion 'All Usage' en el dropdown."""
         try:
-            print(f"Buscando periodo mas cercano a: {target_end_date}")
+            self.logger.info("Seleccionando 'All Usage' en el dropdown...")
 
-            # XPath del panel de opciones
-            options_panel_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[2]/div[2]/div/div"
+            # Dropdown de tipo de usage
+            usage_dropdown_xpath = '//*[@id="usage-dropdown"]/div/mat-form-field/div/div[1]'
 
-            if not self.browser_wrapper.is_element_visible(options_panel_xpath, timeout=10000):
-                print("Panel de opciones no encontrado")
+            if not self.browser_wrapper.is_element_visible(usage_dropdown_xpath, timeout=5000):
+                self.logger.error("Dropdown de usage no encontrado")
                 return False
 
-            # Obtener todas las opciones disponibles
-            options = self.browser_wrapper.find_elements_by_xpath(f"{options_panel_xpath}//mat-option")
+            # Click para abrir el dropdown
+            self.browser_wrapper.click_element(usage_dropdown_xpath)
+            time.sleep(2)
 
-            if not options:
-                print("No se encontraron opciones de periodos")
+            # Buscar la opcion "All usage" en el panel
+            all_usage_option_xpath = "//mat-option//span[contains(text(), 'All usage')]"
+
+            if not self.browser_wrapper.is_element_visible(all_usage_option_xpath, timeout=5000):
+                self.logger.error("Opcion 'All usage' no encontrada")
                 return False
 
-            best_option = None
-            best_match_score = float("inf")
+            self.browser_wrapper.click_element(all_usage_option_xpath)
+            time.sleep(2)
 
-            for option in options:
-                try:
-                    option_text = self.browser_wrapper.get_text_from_element(option)
-
-                    # Saltear opciones especiales
-                    if "Current" in option_text or "View historical" in option_text:
-                        continue
-
-                    # Extraer fechas del texto (formato: "May 13 - Jun 12")
-                    date_match = re.search(r"(\w+)\s+(\d+)\s*-\s*(\w+)\s+(\d+)", option_text)
-                    if not date_match:
-                        continue
-
-                    start_month, start_day, end_month, end_day = date_match.groups()
-
-                    # Construir fecha aproximada del periodo
-                    current_year = target_end_date.year
-
-                    # Mapear nombres de meses
-                    month_map = {
-                        "Jan": 1,
-                        "Feb": 2,
-                        "Mar": 3,
-                        "Apr": 4,
-                        "May": 5,
-                        "Jun": 6,
-                        "Jul": 7,
-                        "Aug": 8,
-                        "Sep": 9,
-                        "Oct": 10,
-                        "Nov": 11,
-                        "Dec": 12,
-                    }
-
-                    if end_month in month_map:
-                        end_month_num = month_map[end_month]
-
-                        # Si el mes de fin es menor que el mes de inicio, el periodo cruza anos
-                        period_year = current_year
-                        if end_month_num < month_map.get(start_month, 1):
-                            period_year = current_year + 1
-
-                        period_end_date = datetime(period_year, end_month_num, int(end_day))
-
-                        # Calcular que tan cerca esta esta fecha del target
-                        date_diff = abs((period_end_date - target_end_date).days)
-
-                        print(f"Opcion: {option_text} | End: {period_end_date} | Diff: {date_diff} dias")
-
-                        if date_diff < best_match_score:
-                            best_match_score = date_diff
-                            best_option = option
-
-                except Exception as e:
-                    print(f"Error procesando opcion: {str(e)}")
-                    continue
-
-            if best_option:
-                option_text = self.browser_wrapper.get_text_from_element(best_option)
-                print(f"Seleccionando mejor opcion: {option_text} (diferencia: {best_match_score} dias)")
-                self.browser_wrapper.click_element_direct(best_option)
-                return True
-            else:
-                print("No se encontro una opcion valida")
-                return False
+            self.logger.info("'All Usage' seleccionado correctamente")
+            return True
 
         except Exception as e:
-            print(f"Error seleccionando periodo: {str(e)}")
+            self.logger.error(f"Error seleccionando 'All Usage': {str(e)}")
             return False
+
+    def _click_download(self) -> Optional[str]:
+        """Hace click en el boton de Download y retorna el path del archivo descargado."""
+        try:
+            self.logger.info("Buscando boton de Download...")
+
+            # Boton de download
+            download_xpath = (
+                '//*[@id="mat-tab-content-0-3"]/div/tfb-usage/div/div[2]/div[1]'
+                "/tfb-usage-table/div/tfb-card/mat-card/div[2]/div[1]/div[2]/div/span"
+            )
+
+            # Alternativa por texto
+            download_text_xpath = "//span[contains(text(), 'Download') or contains(text(), 'download')]"
+
+            if self.browser_wrapper.is_element_visible(download_xpath, timeout=10000):
+                self.logger.info("Haciendo click en Download...")
+                file_path = self.browser_wrapper.expect_download_and_click(
+                    download_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                )
+                return file_path
+            elif self.browser_wrapper.is_element_visible(download_text_xpath, timeout=5000):
+                self.logger.info("Haciendo click en Download (por texto)...")
+                file_path = self.browser_wrapper.expect_download_and_click(
+                    download_text_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                )
+                return file_path
+            else:
+                self.logger.error("Boton de Download no encontrado")
+                return None
+
+        except Exception as e:
+            self.logger.error(f"Error haciendo click en Download: {str(e)}")
+            return None
 
     def _reset_to_main_screen(self):
-        """Reset a la pantalla inicial de T-Mobile."""
+        """Reset a la pantalla inicial de T-Mobile dashboard."""
         try:
-            print("Reseteando a T-Mobile...")
-            self.browser_wrapper.goto("https://b2b.t-mobile.com/")
-            self.browser_wrapper.wait_for_page_load()
-            time.sleep(3)
-            print("Reset completado")
+            self.logger.info("Reseteando a T-Mobile dashboard...")
+            self.browser_wrapper.goto("https://tfb.t-mobile.com/apps/tfb_billing/dashboard")
+            time.sleep(5)
+            self.logger.info("Reset completado")
         except Exception as e:
-            print(f"Error en reset: {str(e)}")
+            self.logger.error(f"Error en reset: {str(e)}")

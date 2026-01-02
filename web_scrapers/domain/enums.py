@@ -13,7 +13,7 @@ class CarrierPortalUrls(str, Enum):
     BELL = "https://business.bell.ca/corporateselfserve/Login"
     TELUS = "https://www.telus.com/en"
     ROGERS = ""
-    TMOBILE = "https://account.t-mobile.com"
+    TMOBILE = "https://tfb.t-mobile.com"
     # TMOBILE = "https://account.t-mobile.com/signin/v2/?redirect_uri=https:%2F%2Ftfb.t-mobile.com%2Fimplicit%2Fcallback&scope=TMO_ID_profile%20openid%20role%20extended_lines%20email&client_id=TFBBilling&access_type=ONLINE&response_type=code"
     VERIZON = "https://mblogin.verizonwireless.com/account/business/ilogin"
 
@@ -89,8 +89,9 @@ class ATTFileSlug(str, Enum):
     ALL_BILLING_CYCLE_CHARGES = "all_billing_cycle_charges"
 
 
-class TMobileFileSlug(str, Enum):
+class TmobileFileSlug(str, Enum):
     CHARGES_AND_USAGE = "charges_and_usage"
     USAGE_DETAIL = "usage_detail"
     INVENTORY_REPORT = "inventory_report"
     EQUIPMENT_INSTALLMENT = "equipment_installment"
+    STATEMENT_DETAIL = "statement_detail"

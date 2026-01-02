@@ -648,80 +648,104 @@ class TMobileAuthStrategy(AuthBaseStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def login(self, credentials: Credentials) -> bool:
         try:
-            print("Starting login in T-Mobile...")
+            self.logger.info("Starting login in T-Mobile...")
 
             self.browser_wrapper.goto(self.get_login_url())
+            self.browser_wrapper.wait_for_page_load(60000)
             time.sleep(3)
 
-            optional_button_xpath = "/html/body/div/div/div[3]/ul/li[2]/button"
-            if self.browser_wrapper.is_element_visible(optional_button_xpath, timeout=5000):
-                print("Optional button detected, clicking...")
-                self.browser_wrapper.click_element(optional_button_xpath)
-                time.sleep(2)
-            else:
-                print("Optional button not found, continuing...")
+            # Handle language modal if present (select English)
+            self._handle_language_modal()
 
-            user_input_xpath = "/html/body/app-initiation/div/app-root/div/div[3]/div/div/div/div[2]/app-login/div[2]/div/div/div/div/div/form/div/div[1]/div/input"
-            print(f"Entering username: {credentials.username}")
-            self.browser_wrapper.clear_and_type(user_input_xpath, credentials.username)
+            # Enter email/phone number
+            email_xpath = '//*[@id="emailOrPhoneNumberTextBox"]'
+            self.logger.info(f"Entering email/phone: {credentials.username}")
+            self.browser_wrapper.clear_and_type(email_xpath, credentials.username)
             time.sleep(1)
 
-            next_button_xpath = "/html/body/app-initiation/div/app-root/div/div[3]/div/div/div/div[2]/app-login/div[2]/div/div/div/div/div/form/div/div[2]/button"
-            print("Clicking Next...")
+            # Click Next button
+            next_button_xpath = '//*[@id="lp1-next-btn"]'
+            self.logger.info("Clicking Next...")
             self.browser_wrapper.click_element(next_button_xpath)
             time.sleep(3)
 
-            password_input_xpath = "/html/body/app-initiation/div/app-root/div/div[2]/div/div/div/div[2]/app-login/div[2]/div/div/div/div[1]/div/form/div/div[1]/div/input"
-            print("Entering password...")
-            self.browser_wrapper.clear_and_type(password_input_xpath, credentials.password)
+            # Enter password
+            password_xpath = '//*[@id="passwordTextBox"]'
+            self.logger.info("Entering password...")
+            self.browser_wrapper.clear_and_type(password_xpath, credentials.password)
             time.sleep(1)
 
-            login_button_xpath = "/html/body/app-initiation/div/app-root/div/div[2]/div/div/div/div[2]/app-login/div[2]/div/div/div/div[1]/div/form/div/button"
-            print("Clicking Log In...")
+            # Click Login button
+            login_button_xpath = '//*[@id="lp2-login-btn"]'
+            self.logger.info("Clicking Log In...")
             self.browser_wrapper.click_element(login_button_xpath)
             time.sleep(5)
 
+            # Handle 2FA if present
             if not self._handle_2fa_if_present(credentials):
-                print("Error in 2FA process")
+                self.logger.error("Error in 2FA process")
                 return False
 
             if self.is_logged_in():
-                print("Login successful in T-Mobile")
+                self.logger.info("Login successful in T-Mobile")
                 return True
             else:
-                print("Login failed in T-Mobile")
+                self.logger.error("Login failed in T-Mobile")
                 return False
 
         except MFACodeError as e:
-            print(f"MFA error during login in T-Mobile: {str(e)}")
+            self.logger.error(f"MFA error during login in T-Mobile: {str(e)}")
             return False
         except Exception as e:
-            print(f"Error during login in T-Mobile: {str(e)}")
+            self.logger.error(f"Error during login in T-Mobile: {str(e)}")
             return False
 
     def logout(self) -> bool:
         try:
-            print("Starting logout in T-Mobile...")
+            self.logger.info("Starting logout in T-Mobile...")
+
+            # First, go to the dashboard
+            self.browser_wrapper.goto("https://tfb.t-mobile.com/apps/tfb_billing/dashboard")
+            time.sleep(3)
 
             if not self.is_logged_in():
-                print("Already logged out")
+                self.logger.info("Already logged out")
                 return True
 
-            logout_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav/div/mat-nav-list[1]/mat-panel-title/mat-list-item"
+            # Logout button is in the second nav-list, 7th panel-title
+            logout_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav/div/mat-nav-list[2]/mat-panel-title[7]/mat-list-item"
+            logout_by_text_xpath = "//mat-list-item[.//span[contains(text(), 'Logout') or contains(text(), 'logout')]]"
+
             if self.browser_wrapper.is_element_visible(logout_xpath, timeout=5000):
-                self.browser_wrapper.click_element(logout_xpath)
-                time.sleep(2)
-                print("Logout successful in T-Mobile")
+                # Verify it says "Logout" before clicking
+                # Use xpath= prefix for page.locator()
+                logout_text = self.browser_wrapper.page.locator(f"xpath={logout_xpath}").inner_text()
+                if "logout" in logout_text.lower():
+                    self.logger.info(f"Logout button found: '{logout_text}'")
+                    self.browser_wrapper.click_element(logout_xpath)
+                    time.sleep(3)
+                    self.logger.info("Logout successful in T-Mobile")
+                    return True
+                else:
+                    self.logger.warning(f"Element found but not logout: '{logout_text}'")
+
+            # Fallback: try by text
+            if self.browser_wrapper.is_element_visible(logout_by_text_xpath, timeout=3000):
+                self.logger.info("Logout button found (by text)")
+                self.browser_wrapper.click_element(logout_by_text_xpath)
+                time.sleep(3)
+                self.logger.info("Logout successful in T-Mobile")
                 return True
-            else:
-                print("Logout element not found")
-                return False
+
+            self.logger.warning("Logout element not found")
+            return False
 
         except Exception as e:
-            print(f"Error during logout in T-Mobile: {str(e)}")
+            self.logger.error(f"Error during logout in T-Mobile: {str(e)}")
             return False
 
     def is_logged_in(self) -> bool:
@@ -734,21 +758,104 @@ class TMobileAuthStrategy(AuthBaseStrategy):
     def get_login_url(self) -> str:
         return CarrierPortalUrls.TMOBILE.value
 
+    def get_logout_xpath(self) -> str:
+        return "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav/div/mat-nav-list[1]/mat-panel-title/mat-list-item"
+
+    def get_username_xpath(self) -> str:
+        return '//*[@id="emailOrPhoneNumberTextBox"]'
+
+    def get_password_xpath(self) -> str:
+        return '//*[@id="passwordTextBox"]'
+
+    def get_login_button_xpath(self) -> str:
+        return '//*[@id="lp2-login-btn"]'
+
+    def _handle_language_modal(self) -> None:
+        """Handle the language selection modal if present (select English).
+
+        The language modal is inside an iframe, so we need to switch context.
+        """
+        iframe_selector = "#lightbox_pop"
+        english_button_css = "#en"
+        email_field_xpath = '//*[@id="emailOrPhoneNumberTextBox"]'
+
+        try:
+            # Esperar a que el iframe del modal tenga tiempo de aparecer
+            self.logger.info("Waiting for language modal iframe to potentially appear...")
+            time.sleep(5)
+
+            # Verificar si el iframe existe
+            page = self.browser_wrapper.page
+            iframe_locator = page.locator(iframe_selector)
+
+            if iframe_locator.count() > 0:
+                self.logger.info("Language modal iframe detected, switching context...")
+
+                # Obtener el frame y buscar el botón dentro
+                frame = page.frame_locator(iframe_selector)
+                english_button = frame.locator(english_button_css)
+
+                if english_button.count() > 0:
+                    self.logger.info("English button found inside iframe, clicking...")
+                    english_button.click()
+                    time.sleep(3)
+                    self.logger.info("Language set to English")
+                else:
+                    self.logger.info("English button not found inside iframe")
+            else:
+                self.logger.info("No language modal iframe detected, continuing...")
+
+            # Verificar que el campo de email esté visible después de manejar el modal
+            if not self.browser_wrapper.is_element_visible(email_field_xpath, timeout=10000):
+                self.logger.warning("Email field not visible after language modal handling")
+
+        except Exception as e:
+            self.logger.warning(f"Error handling language modal: {str(e)}")
+
     def _handle_2fa_if_present(self, credentials: Credentials) -> bool:
-        # TODO: Implementar detección de 2FA para T-Mobile.
-        # Pasos pendientes:
-        # 1. Identificar el XPath del elemento que indica presencia de 2FA
-        # 2. Identificar los XPaths para seleccionar método SMS y enviar código
-        # 3. Identificar el XPath del campo de input para el código
-        # 4. Identificar el XPath del botón de continuar/verificar
-        #
-        # Una vez identificados los elementos, usar el método heredado:
-        #     endpoint_url = f"{self.webhook_url}/api/v1/tmobile"
-        #     code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
-        #
-        # Este método lanzará MFACodeError si el stream falla, interrumpiendo el login.
-        print("2FA verification for T-Mobile - pending implementation")
+        """Detect and handle MFA if present. Similar to Bell implementation."""
+        try:
+            mfa_code_input_xpath = '//*[@id="code"]'
+
+            if self.browser_wrapper.is_element_visible(mfa_code_input_xpath, timeout=10000):
+                self.logger.info("2FA field detected. Starting verification process...")
+                return self._process_2fa(mfa_code_input_xpath, credentials)
+            else:
+                self.logger.info("No 2FA field detected")
+                time.sleep(5)
+                return True
+
+        except MFACodeError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Error verifying 2FA: {str(e)}")
+            return True
+
+    def _process_2fa(self, code_input_xpath: str, credentials: Credentials) -> bool:
+        """Process 2FA by waiting for code from webhook and entering it."""
+        continue_button_xpath = '//*[@id="main"]/div[1]/form/div/div/div[2]/div/div[2]/button'
+
+        self.logger.info("Waiting for MFA code from SSE endpoint...")
+        endpoint_url = f"{self.webhook_url}/api/v1/tmobile"
+        sms_code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
+
+        self.logger.info(f"Entering code: {sms_code}")
+        self.browser_wrapper.click_element(code_input_xpath)
+        self.browser_wrapper.clear_and_type(code_input_xpath, sms_code)
+        time.sleep(1)
+
+        self.logger.info("Clicking Continue...")
+        self.browser_wrapper.click_element(continue_button_xpath)
+
+        self.browser_wrapper.wait_for_page_load()
         time.sleep(5)
+
+        # Check if MFA field is still visible (indicates failure)
+        if self.browser_wrapper.is_element_visible(code_input_xpath, timeout=3000):
+            self.logger.error("2FA validation failed - field still visible")
+            return False
+
+        self.logger.info("2FA validation successful")
         return True
 
 
@@ -902,7 +1009,7 @@ class VerizonAuthStrategy(AuthBaseStrategy):
             filepath = os.path.join(screenshots_dir, filename)
 
             # Take screenshot of the CAPTCHA element
-            captcha_element = self.browser_wrapper.page.locator('#captchaImg')
+            captcha_element = self.browser_wrapper.page.locator("#captchaImg")
             captcha_element.screenshot(path=filepath)
 
             self.logger.info(f"CAPTCHA screenshot saved to: {filepath}")
