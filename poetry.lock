@@ -2058,6 +2058,20 @@ greenlet = ">=3.1.1,<4.0.0"
 pyee = ">=13,<14"
 
 [[package]]
+name = "playwright-stealth"
+version = "2.0.0"
+description = "Make your playwright instance stealthy"
+optional = false
+python-versions = "<4.0,>=3.9"
+files = [
+    {file = "playwright_stealth-2.0.0-py3-none-any.whl", hash = "sha256:9eb3af1fd21619aac9fdd13a4a08141ed67159ac6310a94f7d2f758ba0cbe179"},
+    {file = "playwright_stealth-2.0.0.tar.gz", hash = "sha256:4f44d416d4226689895a4d1cfb40e8d137216c0c9710ea8f84bae2dbf1186fc5"},
+]
+
+[package.dependencies]
+playwright = ">=1.0.0,<2.0.0"
+
+[[package]]
 name = "pre-commit"
 version = "4.2.0"
 description = "A framework for managing and maintaining multi-language pre-commit hooks."
@@ -3495,4 +3509,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "c28b913ad8301b6e7e89cef9c3e1f009419a5c6887bf9c51406fb0cce2113c8a"
+content-hash = "dc6dc0bb614d74cf1240ac6f345b7f7ddb6c7a20e71f3743a869fb14c7c2ff81"

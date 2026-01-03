@@ -12,9 +12,8 @@ class CarrierPortalUrls(str, Enum):
     ATT = "https://www.wireless.att.com/premiercare/"
     BELL = "https://business.bell.ca/corporateselfserve/Login"
     TELUS = "https://www.telus.com/en"
-    ROGERS = ""
+    ROGERS = "https://bss.rogers.com/bizonline/homePage.do"
     TMOBILE = "https://tfb.t-mobile.com"
-    # TMOBILE = "https://account.t-mobile.com/signin/v2/?redirect_uri=https:%2F%2Ftfb.t-mobile.com%2Fimplicit%2Fcallback&scope=TMO_ID_profile%20openid%20role%20extended_lines%20email&client_id=TFBBilling&access_type=ONLINE&response_type=code"
     VERIZON = "https://mblogin.verizonwireless.com/account/business/ilogin"
 
 
@@ -62,8 +61,9 @@ class ScraperType(str, Enum):
 
 class BellFileSlug(str, Enum):
     COST_OVERVIEW = "cost_overview"
-    ENHANCED_USER_PROFILE_REPORT = "enhanced_user_profile_report"
+    ENHANCED_USER_PROFILE = "enhanced_user_profile"
     USAGE_OVERVIEW = "usage_overview"
+    INVOICE_CHARGE_REPORT = "invoice_charge_report"
 
 
 class TelusFileSlug(str, Enum):
@@ -95,3 +95,11 @@ class TmobileFileSlug(str, Enum):
     INVENTORY_REPORT = "inventory_report"
     EQUIPMENT_INSTALLMENT = "equipment_installment"
     STATEMENT_DETAIL = "statement_detail"
+
+
+class RogersFileSlug(str, Enum):
+    CURRENT_CHARGES_SUBSCRIBER = "ccc_chg"
+    MONTHLY_CHARGES_BREAKDOWN = "ccd_monthly"
+    MONTHLY_USAGE_BREAKDOWN = "data"
+    BALANCE_REMAINING = "bcr"
+    CREDITS_SUBSCRIBER = "ccc_credits"

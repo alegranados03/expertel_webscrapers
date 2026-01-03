@@ -12,6 +12,7 @@ from web_scrapers.domain.entities.scraper_strategies import (
     FileDownloadInfo,
     MonthlyReportsScraperStrategy,
 )
+from web_scrapers.domain.enums import ATTFileSlug
 
 DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -22,37 +23,37 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
     # Configuración de reportes por slug
     REPORT_CONFIG = {
-        "all_billing_cycle_charges": {
+        ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value: {
             "tab": "charges_and_usage",
             "section": "Bill summary",
             "report_names": ["All charges"],
             "needs_date_filter": True,
         },
-        "wireless_charges": {
+        ATTFileSlug.WIRELESS_CHARGES.value: {
             "tab": "charges_and_usage",
             "section": "Wireless number summary",
             "report_names": ["All wireless charges and usage (GB usage)", "All wireless charges and usage"],
             "needs_date_filter": True,
         },
-        "usage_details": {
+        ATTFileSlug.USAGE_DETAILS.value: {
             "tab": "charges_and_usage",
             "section": "Billed usage",
             "report_names": ["All data export - usage details (GB usage)", "All data export - usage details"],
             "needs_date_filter": True,
         },
-        "monthly_charges": {
+        ATTFileSlug.MONTHLY_CHARGES.value: {
             "tab": "charges_and_usage",
             "section": "Bill summary",
             "report_names": ["Monthly charges"],
             "needs_date_filter": True,
         },
-        "device_installment": {
+        ATTFileSlug.DEVICE_INSTALLMENT.value: {
             "tab": "charges_and_usage",
             "section": "Equipment installment",
             "report_names": ["Device installment details"],
             "needs_date_filter": True,
         },
-        "upgrade_and_inventory": {
+        ATTFileSlug.UPGRADE_AND_INVENTORY.value: {
             "tab": "inventory",
             "section": "Inventory",
             "report_names": ["Upgrade eligibility and inventory"],
@@ -64,12 +65,12 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         super().__init__(browser_wrapper, job_id=job_id)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.report_dictionary = {
-            "wireless_charges": None,
-            "usage_details": None,
-            "monthly_charges": None,
-            "device_installment": None,
-            "upgrade_and_inventory": None,
-            "all_billing_cycle_charges": None,
+            ATTFileSlug.WIRELESS_CHARGES.value: None,
+            ATTFileSlug.USAGE_DETAILS.value: None,
+            ATTFileSlug.MONTHLY_CHARGES.value: None,
+            ATTFileSlug.DEVICE_INSTALLMENT.value: None,
+            ATTFileSlug.UPGRADE_AND_INVENTORY.value: None,
+            ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value: None,
         }
         self._filters_configured = False
 
@@ -176,13 +177,13 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             # Orden de descarga: primero todos los de "Charges and usage", luego "Inventory"
             charges_reports = [
-                "all_billing_cycle_charges",
-                "wireless_charges",
-                "usage_details",
-                "monthly_charges",
-                "device_installment",
+                ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value,
+                ATTFileSlug.WIRELESS_CHARGES.value,
+                ATTFileSlug.USAGE_DETAILS.value,
+                ATTFileSlug.MONTHLY_CHARGES.value,
+                ATTFileSlug.DEVICE_INSTALLMENT.value,
             ]
-            inventory_reports = ["upgrade_and_inventory"]
+            inventory_reports = [ATTFileSlug.UPGRADE_AND_INVENTORY.value]
 
             # 1. Procesar reportes de "Charges and usage"
             self.logger.info("Processing Charges and usage reports...")

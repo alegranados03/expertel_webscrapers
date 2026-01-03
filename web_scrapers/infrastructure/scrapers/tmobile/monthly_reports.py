@@ -10,17 +10,18 @@ from web_scrapers.domain.entities.scraper_strategies import (
     FileDownloadInfo,
     MonthlyReportsScraperStrategy,
 )
+from web_scrapers.domain.enums import TmobileFileSlug
 
 DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 # Mapeo de nombres de reportes en la UI a slugs del sistema (TmobileFileSlug)
 REPORT_NAME_TO_SLUG = {
-    "Charges and Usage Summary": "charges_and_usage",
-    "Usage Detail Report": "usage_detail",
-    "Statement Detail": "statement_detail",
-    "Equipment Inventory Report": "inventory_report",  # TmobileFileSlug.INVENTORY_REPORT
-    "Equipment Installment and Payment Report": "equipment_installment",
+    "Charges and Usage Summary": TmobileFileSlug.CHARGES_AND_USAGE.value,
+    "Usage Detail Report": TmobileFileSlug.USAGE_DETAIL.value,
+    "Statement Detail": TmobileFileSlug.STATEMENT_DETAIL.value,
+    "Equipment Inventory Report": TmobileFileSlug.INVENTORY_REPORT.value,
+    "Equipment Installment and Payment Report": TmobileFileSlug.EQUIPMENT_INSTALLMENT.value,
 }
 
 

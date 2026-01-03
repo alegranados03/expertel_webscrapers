@@ -9,6 +9,7 @@ from web_scrapers.domain.entities.scraper_strategies import (
     FileDownloadInfo,
     MonthlyReportsScraperStrategy,
 )
+from web_scrapers.domain.enums import TelusFileSlug
 
 DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -450,8 +451,8 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         # Only 2 slugs from ZIP: individual_detail, group_summary
         # mobility_device is obtained from Part 2 (individual reports)
         pattern_to_slug = {
-            "group_summary": "group_summary",
-            "individual_detail": "individual_detail",
+            "group_summary": TelusFileSlug.GROUP_SUMMARY.value,
+            "individual_detail": TelusFileSlug.INDIVIDUAL_DETAIL.value,
         }
 
         for pattern, slug in pattern_to_slug.items():
@@ -718,7 +719,7 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             button_text = self.browser_wrapper.get_text(report_xpath_to_use)
             self.logger.info(f"Report found: {button_text}")
 
-            corresponding_bcf = file_map.get("mobility_device")
+            corresponding_bcf = file_map.get(TelusFileSlug.MOBILITY_DEVICE.value)
             if corresponding_bcf:
                 self.logger.info(f"Using BillingCycleFile ID {corresponding_bcf.id} for mobility_device")
 

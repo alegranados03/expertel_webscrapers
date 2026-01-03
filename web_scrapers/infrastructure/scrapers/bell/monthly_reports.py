@@ -12,6 +12,7 @@ from web_scrapers.domain.entities.scraper_strategies import (
     MonthlyReportsScraperStrategy,
 )
 from web_scrapers.domain.entities.session import Credentials
+from web_scrapers.domain.enums import BellFileSlug
 
 DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
@@ -356,10 +357,10 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
         self.report_dictionary = {
-            "cost_overview": None,
-            "enhanced_user_profile": None,
-            "usage_overview": None,
-            "invoice_charge": None,
+            BellFileSlug.COST_OVERVIEW.value: None,
+            BellFileSlug.ENHANCED_USER_PROFILE.value: None,
+            BellFileSlug.USAGE_OVERVIEW.value: None,
+            BellFileSlug.INVOICE_CHARGE_REPORT.value: None,
         }
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
@@ -488,22 +489,22 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         reports = [
             {
                 "name": "cost overview report",
-                "slug": "cost_overview",
+                "slug": BellFileSlug.COST_OVERVIEW.value,
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
             },
             {
                 "name": "usage overview report",
-                "slug": "usage_overview",
+                "slug": BellFileSlug.USAGE_OVERVIEW.value,
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
             },
             {
                 "name": "enhanced user profile report",
-                "slug": "enhanced_user_profile",
+                "slug": BellFileSlug.ENHANCED_USER_PROFILE.value,
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
             },
             {
                 "name": "invoice charge report",
-                "slug": "invoice_charge_report",
+                "slug": BellFileSlug.INVOICE_CHARGE_REPORT.value,
                 "workbook_button": "//*[@id='ds-sec-expand']/div[2]/div/div[2]/div/div[12]/button",
             },
         ]
@@ -756,10 +757,10 @@ class BellMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _create_report_name_mappings(self) -> Dict[str, List[str]]:
         """Map slugs to expected notification text (from second <b> tag)."""
         return {
-            "cost_overview": ["cost overview report"],
-            "usage_overview": ["usage overview report"],
-            "enhanced_user_profile": ["enhanced user profile report"],
-            "invoice_charge_report": ["invoice charge report"],
+            BellFileSlug.COST_OVERVIEW.value: ["cost overview report"],
+            BellFileSlug.USAGE_OVERVIEW.value: ["usage overview report"],
+            BellFileSlug.ENHANCED_USER_PROFILE.value: ["enhanced user profile report"],
+            BellFileSlug.INVOICE_CHARGE_REPORT.value: ["invoice charge report"],
         }
 
     def _find_notification_by_report_slug(self, report_slug: str, max_age_minutes: int = 60) -> Optional[str]:

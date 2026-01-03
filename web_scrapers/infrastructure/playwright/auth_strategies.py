@@ -430,55 +430,215 @@ class RogersAuthStrategy(AuthBaseStrategy):
     def __init__(self, browser_wrapper: BrowserWrapper, webhook_url: str = None):
         super().__init__(browser_wrapper)
         self.webhook_url = webhook_url or DEFAULT_MFA_SERVICE_URL
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def login(self, credentials: Credentials) -> bool:
         try:
-            result = self._perform_generic_login(credentials)
-            if result:
-                if not self._handle_2fa_if_present(credentials):
-                    print("2FA failed - interrupting login")
-                    return False
-            return result
+            self.logger.info("Starting login in Rogers...")
+
+            self.browser_wrapper.goto(self.get_login_url())
+            self.browser_wrapper.wait_for_page_load(60000)
+            time.sleep(3)
+
+            # Click on Sign In button (try multiple XPaths as the structure may vary)
+            sign_in_button_xpaths = [
+                '//*[@id="login"]/div[2]/div[3]/div/input',
+                '//*[@id="login"]/div[2]/div[4]/div/input',
+            ]
+            self.logger.info("Clicking Sign In button...")
+            for xpath in sign_in_button_xpaths:
+                try:
+                    if self.browser_wrapper.is_element_visible(xpath, timeout=3000):
+                        self.logger.info(f"Sign In button found with xpath: {xpath}")
+                        self.browser_wrapper.click_element(xpath)
+                        break
+                except Exception:
+                    continue
+            else:
+                raise Exception("Sign In button not found with any of the known XPaths")
+            time.sleep(3)
+
+            # Enter username/email
+            username_input_xpath = '//*[@id="ds-form-input-id-0"]'
+            self.logger.info(f"Entering username: {credentials.username}")
+            self.browser_wrapper.wait_for_element(username_input_xpath, timeout=10000)
+            self.browser_wrapper.clear_and_type(username_input_xpath, credentials.username)
+            time.sleep(1)
+
+            # Click Continue button
+            continue_button_xpath = (
+                "/html/body/app-root/div/div/div/div/div/div/div/div/ng-component/form/div[3]/button"
+            )
+            self.logger.info("Clicking Continue...")
+            self.browser_wrapper.click_element(continue_button_xpath)
+            time.sleep(5)
+
+            # Enter password (dynamic form change)
+            password_input_xpath = '//*[@id="input_password"]'
+            self.logger.info("Entering password...")
+            self.browser_wrapper.wait_for_element(password_input_xpath, timeout=10000)
+            self.browser_wrapper.clear_and_type(password_input_xpath, credentials.password)
+            time.sleep(1)
+
+            # Click Sign In button
+            login_button_xpath = '//*[@id="LoginForm"]/div[4]/button'
+            self.logger.info("Clicking Sign In...")
+            self.browser_wrapper.click_element(login_button_xpath)
+            time.sleep(5)
+
+            # Handle 2FA if present
+            if not self._handle_2fa_if_present(credentials):
+                self.logger.error("2FA failed - interrupting login")
+                return False
+
+            if self.is_logged_in():
+                self.logger.info("Login successful in Rogers")
+                return True
+            else:
+                self.logger.error("Login failed in Rogers")
+                return False
+
         except MFACodeError as e:
-            print(f"MFA error during login in Rogers: {str(e)}")
+            self.logger.error(f"MFA error during login in Rogers: {str(e)}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error during login in Rogers: {str(e)}")
             return False
 
     def logout(self) -> bool:
-        return self._perform_generic_logout()
+        try:
+            self.logger.info("Starting logout in Rogers...")
+
+            # Navigate to home page first
+            self.browser_wrapper.goto("https://bss.rogers.com/bizonline/homePage.do")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)
+
+            if not self.is_logged_in():
+                self.logger.info("Already logged out")
+                return True
+
+            # Click logout button
+            logout_button_xpath = '//*[@id="header_greeting"]/a[2]'
+            self.logger.info("Clicking Logout...")
+            if self.browser_wrapper.is_element_visible(logout_button_xpath, timeout=5000):
+                self.browser_wrapper.click_element(logout_button_xpath)
+                self.browser_wrapper.wait_for_page_load()
+                time.sleep(3)
+                self.logger.info("Logout successful in Rogers")
+                return True
+            else:
+                self.logger.error("Logout button not found")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error during logout in Rogers: {str(e)}")
+            return False
 
     def is_logged_in(self) -> bool:
-        return self.browser_wrapper.is_element_visible(self.get_logout_xpath(), timeout=10000)
+        try:
+            welcome_div_xpath = "/html/body/div[1]/div[2]/div[2]"
+            if self.browser_wrapper.is_element_visible(welcome_div_xpath, timeout=10000):
+                welcome_text = self.browser_wrapper.get_text(welcome_div_xpath)
+                if welcome_text and "welcome" in welcome_text.lower():
+                    self.logger.info(f"Welcome message found: {welcome_text.strip()}")
+                    return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Error checking login status: {str(e)}")
+            return False
 
     def get_login_url(self) -> str:
-        return CarrierPortalUrls.ROGERS.value or "https://www.rogers.com/business/login"
+        return CarrierPortalUrls.ROGERS.value
 
     def get_logout_xpath(self) -> str:
-        return "//a[contains(@href, 'logout') or contains(text(), 'Logout') or contains(text(), 'Sign Out') or contains(text(), 'Cerrar Sesión')]"
+        return '//*[@id="header_greeting"]/a[2]'
 
     def get_username_xpath(self) -> str:
-        return "//input[@type='text' and (@name='username' or @name='email' or @id='username' or @id='email' or @name='user')]"
+        return '//*[@id="ds-form-input-id-0"]'
 
     def get_password_xpath(self) -> str:
-        return "//input[@type='password' and (@name='password' or @id='password' or @name='pass')]"
+        return '//*[@id="input_password"]'
 
     def get_login_button_xpath(self) -> str:
-        return "//button[@type='submit' or contains(text(), 'Login') or contains(text(), 'Sign In') or contains(text(), 'Iniciar') or contains(@value, 'Login')]"
+        return '//*[@id="LoginForm"]/div[4]/button'
 
     def _handle_2fa_if_present(self, credentials: Credentials) -> bool:
-        # TODO: Implementar deteccion de 2FA para Rogers.
-        # Pasos pendientes:
-        # 1. Identificar el XPath del elemento que indica presencia de 2FA
-        # 2. Identificar los XPaths para seleccionar metodo SMS y enviar codigo
-        # 3. Identificar el XPath del campo de input para el codigo
-        # 4. Identificar el XPath del boton de continuar/verificar
-        #
-        # Una vez identificados los elementos, usar el metodo heredado:
-        #     endpoint_url = f"{self.webhook_url}/api/v1/rogers"
-        #     code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
-        #
-        # Este metodo lanzara MFACodeError si el stream falla, interrumpiendo el login.
-        print("2FA verification for Rogers - pending implementation")
+        """Detect and handle MFA if present for Rogers."""
+        try:
+            verification_h1_xpath = (
+                "/html/body/app-root/div/div/div/div/div/div/div/div/otp-device-list/div/h1"
+            )
+
+            if self.browser_wrapper.is_element_visible(verification_h1_xpath, timeout=10000):
+                h1_text = self.browser_wrapper.get_text(verification_h1_xpath)
+                if h1_text and "receive verification code" in h1_text.lower():
+                    self.logger.info("2FA verification screen detected. Starting verification process...")
+                    return self._process_2fa(credentials)
+                else:
+                    self.logger.info(f"H1 found but different content: {h1_text}")
+                    return True
+            else:
+                self.logger.info("No 2FA verification screen detected")
+                time.sleep(5)
+                return True
+
+        except MFACodeError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Error verifying 2FA: {str(e)}")
+            return True
+
+    def _process_2fa(self, credentials: Credentials) -> bool:
+        """Process 2FA by selecting Email option and entering the code."""
+        email_button_xpath = (
+            "/html/body/app-root/div/div/div/div/div/div/div/div/otp-device-list/div/div[2]/button"
+        )
+        code_input_xpath = (
+            "/html/body/app-root/div/div/div/div/div/div/div/div/otp-waiting-for-input/div/form/div/div[1]"
+            "/ds-code-input/div/div[2]/input"
+        )
+        verify_button_xpath = (
+            "/html/body/app-root/div/div/div/div/div/div/div/div/otp-waiting-for-input/div/form/div/button"
+        )
+
+        # Verify the button contains "Email" before clicking
+        if self.browser_wrapper.is_element_visible(email_button_xpath, timeout=5000):
+            button_text = self.browser_wrapper.get_text(email_button_xpath)
+            if button_text and "email" in button_text.lower():
+                self.logger.info(f"Email option found: {button_text.strip()}")
+                self.browser_wrapper.click_element(email_button_xpath)
+                time.sleep(2)
+            else:
+                self.logger.warning(f"Button does not contain 'Email': {button_text}")
+                return False
+        else:
+            self.logger.error("Email button not found")
+            return False
+
+        # Wait for MFA code from SSE endpoint
+        self.logger.info("Waiting for MFA code from SSE endpoint...")
+        endpoint_url = f"{self.webhook_url}/api/v1/rogers"
+        mfa_code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
+
+        self.logger.info(f"Entering code: {mfa_code}")
+        self.browser_wrapper.wait_for_element(code_input_xpath, timeout=10000)
+        self.browser_wrapper.clear_and_type(code_input_xpath, mfa_code)
+        time.sleep(1)
+
+        # Click verify button
+        self.logger.info("Clicking Verify button...")
+        self.browser_wrapper.click_element(verify_button_xpath)
+
+        self.browser_wrapper.wait_for_page_load()
         time.sleep(5)
+
+        # Check if code input is still visible (indicates failure)
+        if self.browser_wrapper.is_element_visible(code_input_xpath, timeout=3000):
+            self.logger.error("2FA validation failed - code input still visible")
+            return False
+
+        self.logger.info("2FA validation successful")
         return True
 
 
