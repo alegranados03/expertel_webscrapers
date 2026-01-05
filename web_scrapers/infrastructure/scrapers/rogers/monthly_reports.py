@@ -51,7 +51,6 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(reports_link_xpath, timeout=10000):
                 self.browser_wrapper.click_element(reports_link_xpath)
-                self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
             else:
                 self.logger.error("Reports link not found")
@@ -258,6 +257,9 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
     def _select_account_number_via_iframe(self, account_number: str) -> bool:
         """Opens account number iframe and selects the account."""
+        iframe_selector = '#TB_iframeContent'
+        page = self.browser_wrapper.page
+
         try:
             # Click on Account Numbers link to open iframe
             account_numbers_link_xpath = '//*[@id="accountNumbersLink"]'
@@ -269,10 +271,6 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             self.browser_wrapper.click_element(account_numbers_link_xpath)
             time.sleep(3)
-
-            # Switch to iframe
-            iframe_selector = '#TB_iframeContent'
-            page = self.browser_wrapper.page
 
             self.logger.info("Switching to iframe context...")
             iframe_locator = page.locator(iframe_selector)
@@ -292,17 +290,25 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 time.sleep(1)
             else:
                 self.logger.error("Search radio button not found in iframe")
+                self._close_iframe_modal()
                 return False
 
-            # Enter account number in search field
+            # Enter account number using keyboard.type() to trigger input events
             search_field_xpath = '//*[@id="searchField1"]'
             self.logger.info(f"Entering account number: {account_number}")
             search_field = frame.locator(f"xpath={search_field_xpath}")
             if search_field.count() > 0:
-                search_field.fill(account_number)
+                search_field.click()
+                time.sleep(0.3)
+                search_field.fill("")  # Clear first
+                search_field.type(account_number, delay=50)  # Type character by character
+                time.sleep(0.5)
+                # Trigger blur to activate Find button
+                search_field.blur()
                 time.sleep(1)
             else:
                 self.logger.error("Search field not found in iframe")
+                self._close_iframe_modal()
                 return False
 
             # Click find button
@@ -314,6 +320,7 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 time.sleep(3)
             else:
                 self.logger.error("Find button not found in iframe")
+                self._close_iframe_modal()
                 return False
 
             # Find and click the Select button for the account
@@ -336,6 +343,7 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     time.sleep(2)
                 else:
                     self.logger.error("Select button not found in iframe")
+                    self._close_iframe_modal()
                     return False
 
             self.logger.info("Account number selected successfully")
@@ -343,7 +351,46 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         except Exception as e:
             self.logger.error(f"Error selecting account number via iframe: {str(e)}")
+            self._close_iframe_modal()
             return False
+
+    def _close_iframe_modal(self) -> None:
+        """Closes the iframe modal/overlay if it's open."""
+        try:
+            self.logger.info("Attempting to close iframe modal...")
+            page = self.browser_wrapper.page
+
+            # Try clicking the close button (TB_closeWindowButton is common for ThickBox modals)
+            close_button_selectors = [
+                '#TB_closeWindowButton',
+                '.TB_closeWindowButton',
+                '#TB_closeAjaxWindow',
+                '//a[@id="TB_closeWindowButton"]',
+                '//div[@id="TB_closeWindowButton"]',
+            ]
+
+            for selector in close_button_selectors:
+                try:
+                    if selector.startswith('//'):
+                        locator = page.locator(f"xpath={selector}")
+                    else:
+                        locator = page.locator(selector)
+
+                    if locator.count() > 0 and locator.is_visible():
+                        locator.click()
+                        time.sleep(1)
+                        self.logger.info(f"Modal closed using selector: {selector}")
+                        return
+                except Exception:
+                    continue
+
+            # Fallback: try pressing Escape key
+            self.logger.info("Trying Escape key to close modal...")
+            page.keyboard.press("Escape")
+            time.sleep(1)
+
+        except Exception as e:
+            self.logger.warning(f"Could not close modal: {str(e)}")
 
     def _click_run_report(self) -> bool:
         """Clicks the Run Report button."""
@@ -352,7 +399,6 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(run_report_xpath, timeout=10000):
                 self.browser_wrapper.click_element(run_report_xpath)
-                self.browser_wrapper.wait_for_page_load()
                 self.logger.info("Run Report clicked, waiting for redirect...")
                 time.sleep(5)
                 return True
@@ -448,7 +494,6 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(go_button_xpath, timeout=5000):
                 self.browser_wrapper.click_element(go_button_xpath)
-                self.browser_wrapper.wait_for_page_load()
                 self.logger.info("Go button clicked")
                 return True
             else:
@@ -555,7 +600,6 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(reports_link_xpath, timeout=10000):
                 self.browser_wrapper.click_element(reports_link_xpath)
-                self.browser_wrapper.wait_for_page_load()
                 time.sleep(3)
 
         except Exception as e:

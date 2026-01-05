@@ -88,17 +88,36 @@ class ChromeDriverBuilder(BaseNavigatorDriverBuilder):
         launch_options = self._get_launch_options()
         launch_options["channel"] = Navigators.CHROME.value
 
+        # Ignorar args de automatizacion por defecto
+        launch_options["ignore_default_args"] = ["--enable-automation"]
+
         launch_options.setdefault("args", [])
         launch_options["args"] += [
+            # Args originales
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
             "--disable-dev-shm-usage",
             "--disable-web-security",
             "--disable-features=VizDisplayCompositor",
             "--window-size=1920,1080",
             "--start-maximized",
+            # Args anti-deteccion mejorados
+            "--disable-blink-features=AutomationControlled",
+            "--disable-automation",
+            "--disable-extensions",
+            "--disable-default-apps",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-background-networking",
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling",
+            "--disable-ipc-flooding-protection",
+            "--password-store=basic",
+            "--use-mock-keychain",
+            "--force-color-profile=srgb",
         ]
 
         return self.pw.chromium.launch(**launch_options)
@@ -133,17 +152,36 @@ class EdgeDriverBuilder(BaseNavigatorDriverBuilder):
     def get_browser(self) -> Browser:
         launch_options = self._get_launch_options()
 
+        # Ignorar args de automatizacion por defecto
+        launch_options["ignore_default_args"] = ["--enable-automation"]
+
         launch_options.setdefault("args", [])
         launch_options["args"] += [
+            # Args originales
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-blink-features=AutomationControlled",
             "--disable-infobars",
             "--disable-dev-shm-usage",
             "--disable-web-security",
             "--disable-features=VizDisplayCompositor",
             "--window-size=1920,1080",
             "--start-maximized",
+            # Args anti-deteccion mejorados
+            "--disable-blink-features=AutomationControlled",
+            "--disable-automation",
+            "--disable-extensions",
+            "--disable-default-apps",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-background-networking",
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-renderer-backgrounding",
+            "--disable-background-timer-throttling",
+            "--disable-ipc-flooding-protection",
+            "--password-store=basic",
+            "--use-mock-keychain",
+            "--force-color-profile=srgb",
         ]
 
         return self.pw.chromium.launch(**launch_options, channel="msedge")
@@ -177,6 +215,7 @@ class FirefoxDriverBuilder(BaseNavigatorDriverBuilder):
         super().set_driver_options(**kwargs)
 
         firefox_prefs = {
+            # Preferencias anti-deteccion originales
             "dom.webdriver.enabled": False,
             "useAutomationExtension": False,
             "media.peerconnection.enabled": False,
@@ -184,6 +223,24 @@ class FirefoxDriverBuilder(BaseNavigatorDriverBuilder):
             "webgl.disabled": False,
             "javascript.enabled": True,
             "intl.accept_languages": "en-US, en",
+            # Preferencias anti-deteccion mejoradas
+            "privacy.resistFingerprinting": False,  # Evita inconsistencias de fingerprint
+            "dom.webaudio.enabled": True,
+            "media.navigator.enabled": True,
+            "network.http.sendRefererHeader": 2,
+            "browser.startup.homepage_override.mstone": "ignore",
+            "startup.homepage_welcome_url.additional": "",
+            "browser.shell.checkDefaultBrowser": False,
+            "browser.tabs.warnOnClose": False,
+            "toolkit.telemetry.reportingpolicy.firstRun": False,
+            "datareporting.policy.dataSubmissionEnabled": False,
+            "toolkit.telemetry.enabled": False,
+            "browser.newtabpage.enabled": False,
+            "browser.newtabpage.enhanced": False,
+            "browser.usedOnWindows10.introURL": "",
+            "browser.aboutHomeSnippets.updateUrl": "",
+            "browser.safebrowsing.enabled": False,
+            "browser.safebrowsing.malware.enabled": False,
         }
 
         if kwargs.get("disable_images", False):

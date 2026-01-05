@@ -91,24 +91,28 @@ async def code_extractor(carrier: str, email_alias: str, carrier_from_email: str
 
 @router.get("/att")
 async def get_att_code(email_alias: str = Query(...)):
+    email_alias = "notifications@expertel.com"
     carrier_from_email = "premier@premier.wireless.att-mail.com"
     return EventSourceResponse(code_extractor("att", email_alias, carrier_from_email))
 
 
 @router.get("/bell")
 async def get_bell_code(email_alias: str = Query(...)):
+    email_alias = "notifications@expertel.com"
     carrier_from_email = "noreply@bell.ca"
     return EventSourceResponse(code_extractor("bell", email_alias, carrier_from_email))
 
 
 @router.get("/rogers")
 async def get_rogers_code(email_alias: str = Query(...)):
+    email_alias = "notifications@expertel.com"
     carrier_from_email = "notifications@rci.rogers.com"
     return EventSourceResponse(code_extractor("rogers", email_alias, carrier_from_email))
 
 
 @router.get("/telus")
 async def get_telus_code(email_alias: str = Query(...)):
+    email_alias = "notifications@expertel.com"
     carrier_from_email = "telus@example.com"
     return EventSourceResponse(code_extractor("telus", email_alias, carrier_from_email))
 

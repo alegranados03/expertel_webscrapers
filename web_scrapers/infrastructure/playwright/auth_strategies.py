@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from playwright_stealth import Stealth
 
 from mfa.infrastructure.verizon_captcha_solver import extract_text_from_image
 from web_scrapers.domain.entities.auth_strategies import AuthBaseStrategy, MFACodeError
@@ -437,7 +438,7 @@ class RogersAuthStrategy(AuthBaseStrategy):
             self.logger.info("Starting login in Rogers...")
 
             self.browser_wrapper.goto(self.get_login_url())
-            self.browser_wrapper.wait_for_page_load(60000)
+
             time.sleep(3)
 
             # Click on Sign In button (try multiple XPaths as the structure may vary)
@@ -594,7 +595,8 @@ class RogersAuthStrategy(AuthBaseStrategy):
         email_button_xpath = (
             "/html/body/app-root/div/div/div/div/div/div/div/div/otp-device-list/div/div[2]/button"
         )
-        code_input_xpath = (
+        # First input of the ds-code-input component (there are 6 individual inputs)
+        first_code_input_xpath = (
             "/html/body/app-root/div/div/div/div/div/div/div/div/otp-waiting-for-input/div/form/div/div[1]"
             "/ds-code-input/div/div[2]/input"
         )
@@ -621,9 +623,14 @@ class RogersAuthStrategy(AuthBaseStrategy):
         endpoint_url = f"{self.webhook_url}/api/v1/rogers"
         mfa_code = self._consume_mfa_sse_stream(endpoint_url, credentials.username)
 
+        # Enter code using keyboard.type() to handle multi-input OTP component
+        # The ds-code-input component has 6 individual inputs, clicking the first
+        # and typing triggers the component's internal logic to distribute digits
         self.logger.info(f"Entering code: {mfa_code}")
-        self.browser_wrapper.wait_for_element(code_input_xpath, timeout=10000)
-        self.browser_wrapper.clear_and_type(code_input_xpath, mfa_code)
+        self.browser_wrapper.wait_for_element(first_code_input_xpath, timeout=10000)
+        self.browser_wrapper.click_element(first_code_input_xpath)
+        time.sleep(0.3)
+        self.browser_wrapper.page.keyboard.type(mfa_code, delay=100)
         time.sleep(1)
 
         # Click verify button
@@ -634,7 +641,7 @@ class RogersAuthStrategy(AuthBaseStrategy):
         time.sleep(5)
 
         # Check if code input is still visible (indicates failure)
-        if self.browser_wrapper.is_element_visible(code_input_xpath, timeout=3000):
+        if self.browser_wrapper.is_element_visible(first_code_input_xpath, timeout=3000):
             self.logger.error("2FA validation failed - code input still visible")
             return False
 
@@ -1333,6 +1340,7 @@ class VerizonAuthStrategy(AuthBaseStrategy):
             # Open new tab with the MFA link
             self.logger.info("Opening MFA link in new tab...")
             new_page = self.browser_wrapper.context.new_page()
+            Stealth().apply_stealth_sync(new_page)  # Aplicar stealth a la nueva pagina
             self.browser_wrapper.page = new_page
             new_page.goto(mfa_link)
             new_page.wait_for_load_state("networkidle")

@@ -2,6 +2,8 @@ import time
 from datetime import datetime
 from typing import Dict, Optional, Type
 
+from playwright_stealth import Stealth
+
 from web_scrapers.domain.entities.auth_strategies import AuthBaseStrategy
 from web_scrapers.domain.entities.session import Carrier, Credentials, SessionState, SessionStatus
 from web_scrapers.domain.enums import Navigators, ScraperType
@@ -19,6 +21,9 @@ from web_scrapers.infrastructure.playwright.browser_wrapper import BrowserWrappe
 
 
 class SessionManager:
+
+    # Carriers que requieren perfil persistente para evitar deteccion de bots
+    CARRIERS_WITH_PERSISTENT_PROFILE = {Carrier.ROGERS}
 
     def __init__(self, browser_type: Optional[Navigators] = None):
 
@@ -103,11 +108,20 @@ class SessionManager:
     def get_error_message(self) -> Optional[str]:
         return self.session_state.error_message
 
-    def _initialize_browser(self) -> BrowserWrapper:
+    def _initialize_browser(self, carrier: Optional[Carrier] = None) -> BrowserWrapper:
 
         if not self._browser_wrapper:
-            self._browser, self._context = self.browser_manager.get_browser(self.browser_type)
+            # Determinar si el carrier requiere perfil persistente
+            profile_name = None
+            if carrier and carrier in self.CARRIERS_WITH_PERSISTENT_PROFILE:
+                profile_name = carrier.value.lower()  # "rogers", "bell", etc.
+
+            self._browser, self._context = self.browser_manager.get_browser(
+                self.browser_type,
+                profile_name=profile_name
+            )
             self._page = self._context.new_page()
+            Stealth().apply_stealth_sync(self._page)  # Aplicar stealth a la pagina
             self._browser_wrapper = PlaywrightWrapper(self._page)
 
         return self._browser_wrapper
@@ -115,6 +129,7 @@ class SessionManager:
     def get_new_browser_wrapper(self) -> BrowserWrapper:
         if self._context:
             self._page = self._context.new_page()
+            Stealth().apply_stealth_sync(self._page)  # Aplicar stealth a la pagina
             self._browser_wrapper = PlaywrightWrapper(self._page)
         return self._browser_wrapper
 
@@ -159,7 +174,7 @@ class SessionManager:
                 error_msg = f"No auth strategy for carrier: {credentials.carrier}, scraper_type: {scraper_type}"
                 self.session_state.set_error(error_msg)
                 return False
-            browser_wrapper = self._initialize_browser()
+            browser_wrapper = self._initialize_browser(carrier=credentials.carrier)
             self._current_auth_strategy = auth_strategy_class(browser_wrapper)
             self._scraper_type = scraper_type
             self._current_login_url = self._current_auth_strategy.get_login_url()  # ← CAMBIO: guardar URL de login
@@ -241,6 +256,7 @@ class SessionManager:
             for page in self._context.pages:
                 page.close()
             self._page = self._context.new_page()
+            Stealth().apply_stealth_sync(self._page)  # Aplicar stealth a la pagina
             self._browser_wrapper = PlaywrightWrapper(self._page)
 
     def __enter__(self):
