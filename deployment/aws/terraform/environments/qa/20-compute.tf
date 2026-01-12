@@ -1,0 +1,43 @@
+# =============================================================================
+# COMPUTE - SCRAPER INSTANCE
+# =============================================================================
+
+module "scraper_instance" {
+  source = "../../modules/scraper-instance"
+
+  app_name       = var.app_name
+  environment    = var.environment
+  aws_region     = var.aws_region
+  aws_account_id = data.aws_caller_identity.current.account_id
+
+  # Network
+  vpc_id    = data.aws_vpc.backend.id
+  subnet_id = data.aws_subnets.public.ids[0]
+
+  # Instance
+  ami_id           = data.aws_ami.ubuntu.id
+  instance_type    = var.instance_type
+  key_name         = var.key_name
+  root_volume_size = var.root_volume_size
+
+  # Security
+  database_security_group_id = data.aws_security_group.database.id
+  ssh_allowed_cidrs          = var.ssh_allowed_cidrs
+  novnc_allowed_cidrs        = var.novnc_allowed_cidrs
+
+  # Application
+  github_repo_url   = var.github_repository_url
+  github_branch     = var.github_branch
+  s3_bucket_name    = data.aws_s3_bucket.backend.bucket
+  sns_topic_arn     = module.notifications.sns_topic_arn
+  screen_resolution = var.screen_resolution
+  timezone          = var.timezone
+
+  # Logs
+  log_retention_days = var.log_retention_days
+  create_elastic_ip  = true
+
+  tags = local.common_tags
+
+  depends_on = [module.notifications]
+}
