@@ -261,6 +261,10 @@ ANTHROPIC_API_KEY=$(get_ssm_parameter "/$APP_NAME/$ENVIRONMENT/anthropic/api-key
 MFA_SERVICE_URL=$(get_ssm_parameter "/$APP_NAME/$ENVIRONMENT/mfa-service/url")
 NOVNC_PASSWORD=$(get_ssm_parameter "/$APP_NAME/$ENVIRONMENT/novnc/password")
 
+# Set scraper user password (same as noVNC for convenience)
+echo "scraper:$NOVNC_PASSWORD" | chpasswd
+echo "Scraper user password set"
+
 # Create .env file
 echo "Creating environment configuration..."
 cat > $APP_DIR/.env << EOF
