@@ -28,7 +28,7 @@ phases:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --parameters '{"commands":["cd /opt/experteliq2-scraper","sudo -u scraper git fetch origin","sudo -u scraper git reset --hard origin/'"$CODEBUILD_SOURCE_VERSION"'","sudo -u scraper /home/scraper/.local/bin/poetry install --no-root","sudo systemctl restart scraper.timer","echo Deployment completed"]}' \
+          --parameters '{"commands":["sudo -u scraper git config --global --add safe.directory /opt/experteliq2-scraper","cd /opt/experteliq2-scraper","sudo -u scraper git fetch origin","sudo -u scraper git reset --hard origin/'"$CODEBUILD_SOURCE_VERSION"'","sudo -u scraper /home/scraper/.local/bin/poetry install --no-root","sudo systemctl restart scraper.timer","echo Deployment completed"]}' \
           --timeout-seconds 300 \
           --region "$AWS_DEFAULT_REGION" \
           --query 'Command.CommandId' \
