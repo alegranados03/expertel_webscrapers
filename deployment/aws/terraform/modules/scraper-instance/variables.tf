@@ -85,8 +85,9 @@ variable "github_branch" {
 }
 
 variable "s3_bucket_name" {
-  description = "S3 bucket name for file storage"
+  description = "S3 bucket name for file storage (optional)"
   type        = string
+  default     = ""
 }
 
 variable "sns_topic_arn" {

@@ -9,21 +9,22 @@
 
 # Get the VPC created by the backend
 data "aws_vpc" "backend" {
-  tags = {
-    Name        = "${local.backend_app_name}-${var.environment}-vpc"
-    Environment = var.environment
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-vpc"]
   }
 }
 
-# Get public subnets from the backend VPC
+# Get public subnets from the backend VPC (by name pattern)
 data "aws_subnets" "public" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.backend.id]
   }
 
-  tags = {
-    Type = "public"
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-public-subnet-*"]
   }
 }
 
@@ -31,11 +32,16 @@ data "aws_subnets" "public" {
 # SECURITY GROUPS (from backend)
 # -----------------------------------------------------------------------------
 
-# Get the database security group to allow scraper access
-data "aws_security_group" "database" {
-  tags = {
-    Name        = "${local.backend_app_name}-${var.environment}-database-sg"
-    Environment = var.environment
+# Get the app security group from backend
+data "aws_security_group" "backend_app" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.backend.id]
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-app-sg"]
   }
 }
 
@@ -43,14 +49,29 @@ data "aws_security_group" "database" {
 # SSM PARAMETERS (from backend)
 # -----------------------------------------------------------------------------
 
-# Get database host from backend SSM
-data "aws_ssm_parameter" "db_host" {
-  name = "/${local.backend_app_name}/${var.environment}/database/host"
+# Get app-settings JSON from backend (contains db_host, db_port, db_name, etc.)
+data "aws_ssm_parameter" "backend_app_settings" {
+  name = "/${local.backend_app_name}/${var.environment}/config/app-settings"
 }
 
 # Get backend ALB URL
 data "aws_ssm_parameter" "backend_url" {
   name = "/${local.backend_app_name}/${var.environment}/config/alb-url"
+}
+
+# -----------------------------------------------------------------------------
+# PARSED BACKEND CONFIGURATION
+# -----------------------------------------------------------------------------
+# Parse the JSON from backend app-settings to extract database configuration
+
+locals {
+  backend_config = jsondecode(data.aws_ssm_parameter.backend_app_settings.value)
+
+  # Database configuration from backend (always defined in JSON)
+  db_host = local.backend_config.db_host
+  db_port = local.backend_config.db_port
+  db_name = local.backend_config.db_name
+  db_user = local.backend_config.db_user
 }
 
 # -----------------------------------------------------------------------------
@@ -71,12 +92,4 @@ data "aws_ami" "ubuntu" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
-}
-
-# -----------------------------------------------------------------------------
-# S3 BUCKET (from backend, for file storage)
-# -----------------------------------------------------------------------------
-
-data "aws_s3_bucket" "backend" {
-  bucket = "${local.backend_app_name}-${var.environment}-storage"
 }

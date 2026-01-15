@@ -6,41 +6,41 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# DATABASE CONFIGURATION (reference from backend)
+# DATABASE CONFIGURATION (from backend app-settings JSON)
 # -----------------------------------------------------------------------------
 
 resource "aws_ssm_parameter" "db_host" {
   name        = "/${var.app_name}/${var.environment}/database/host"
-  description = "PostgreSQL host (from backend)"
+  description = "PostgreSQL host (from backend app-settings)"
   type        = "String"
-  value       = data.aws_ssm_parameter.db_host.value
+  value       = local.db_host
 
   tags = local.common_tags
 }
 
 resource "aws_ssm_parameter" "db_name" {
   name        = "/${var.app_name}/${var.environment}/database/name"
-  description = "PostgreSQL database name"
+  description = "PostgreSQL database name (from backend app-settings)"
   type        = "String"
-  value       = "experteliq2_${var.environment}"
+  value       = local.db_name
 
   tags = local.common_tags
 }
 
 resource "aws_ssm_parameter" "db_port" {
   name        = "/${var.app_name}/${var.environment}/database/port"
-  description = "PostgreSQL port"
+  description = "PostgreSQL port (from backend app-settings)"
   type        = "String"
-  value       = "5432"
+  value       = local.db_port
 
   tags = local.common_tags
 }
 
 resource "aws_ssm_parameter" "db_username" {
   name        = "/${var.app_name}/${var.environment}/database/username"
-  description = "PostgreSQL username"
+  description = "PostgreSQL username (from backend app-settings)"
   type        = "String"
-  value       = "experteliq2"
+  value       = local.db_user
 
   tags = local.common_tags
 }
@@ -51,9 +51,9 @@ resource "aws_ssm_parameter" "db_username" {
 
 resource "aws_ssm_parameter" "backend_url" {
   name        = "/${var.app_name}/${var.environment}/backend-api/url"
-  description = "Backend API URL"
+  description = "Backend API URL (from backend alb-url, already includes http://)"
   type        = "String"
-  value       = "http://${data.aws_ssm_parameter.backend_url.value}"
+  value       = data.aws_ssm_parameter.backend_url.value
 
   tags = local.common_tags
 }

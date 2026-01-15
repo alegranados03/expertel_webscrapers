@@ -9,21 +9,22 @@
 
 # Get the VPC created by the backend
 data "aws_vpc" "backend" {
-  tags = {
-    Name        = "${local.backend_app_name}-${var.environment}-vpc"
-    Environment = var.environment
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-vpc"]
   }
 }
 
-# Get public subnets from the backend VPC
+# Get public subnets from the backend VPC (by name pattern)
 data "aws_subnets" "public" {
   filter {
     name   = "vpc-id"
     values = [data.aws_vpc.backend.id]
   }
 
-  tags = {
-    Type = "public"
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-public-subnet-*"]
   }
 }
 
@@ -31,11 +32,16 @@ data "aws_subnets" "public" {
 # SECURITY GROUPS (from backend)
 # -----------------------------------------------------------------------------
 
-# Get the database security group to allow scraper access
-data "aws_security_group" "database" {
-  tags = {
-    Name        = "${local.backend_app_name}-${var.environment}-database-sg"
-    Environment = var.environment
+# Get the app security group from backend
+data "aws_security_group" "backend_app" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.backend.id]
+  }
+
+  filter {
+    name   = "tag:Name"
+    values = ["${local.backend_app_name}-${var.environment}-app-sg"]
   }
 }
 
@@ -71,12 +77,4 @@ data "aws_ami" "ubuntu" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
-}
-
-# -----------------------------------------------------------------------------
-# S3 BUCKET (from backend, for file storage)
-# -----------------------------------------------------------------------------
-
-data "aws_s3_bucket" "backend" {
-  bucket = "${local.backend_app_name}-${var.environment}-storage"
 }

@@ -6,7 +6,7 @@
 # - XFCE desktop environment
 # - noVNC for remote browser access
 # - Python 3.11 + Poetry + Playwright
-# - Systemd timers for scheduled execution (23:00 & 12:00 EST)
+# - Systemd timers for scheduled execution (every 30 min with flock mutex)
 # =============================================================================
 
 set -e
@@ -108,25 +108,57 @@ echo "Installing Nginx..."
 apt-get install -y nginx apache2-utils
 
 # =============================================================================
-# INSTALL PYTHON 3.11 + POETRY
+# INSTALL PYENV + PYTHON 3.11 (without modifying system Python)
 # =============================================================================
 
-echo "Installing Python 3.11..."
-add-apt-repository -y ppa:deadsnakes/ppa
-apt-get update -y
+echo "Installing pyenv dependencies..."
 apt-get install -y \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
-    python3-pip
+    make \
+    build-essential \
+    libssl-dev \
+    zlib1g-dev \
+    libbz2-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    llvm \
+    libncursesw5-dev \
+    xz-utils \
+    tk-dev \
+    libxml2-dev \
+    libxmlsec1-dev \
+    libffi-dev \
+    liblzma-dev \
+    libpq-dev
 
-# Set Python 3.11 as default
-update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+# Install pyenv for scraper user (will be created later, install globally first)
+echo "Installing pyenv..."
+export PYENV_ROOT="/opt/pyenv"
+curl https://pyenv.run | bash
 
+# Add pyenv to system profile for all users
+cat > /etc/profile.d/pyenv.sh << 'PYENV_PROFILE'
+export PYENV_ROOT="/opt/pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+PYENV_PROFILE
+
+# Load pyenv for current script
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$($PYENV_ROOT/bin/pyenv init -)"
+
+# Install Python 3.11 via pyenv
+echo "Installing Python 3.11 via pyenv..."
+$PYENV_ROOT/bin/pyenv install 3.11.9
+$PYENV_ROOT/bin/pyenv global 3.11.9
+
+# Verify Python version
+echo "Python version: $($PYENV_ROOT/shims/python --version)"
+
+# Install Poetry using pyenv's Python
 echo "Installing Poetry..."
-curl -sSL https://install.python-poetry.org | python3 -
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> /root/.bashrc
+curl -sSL https://install.python-poetry.org | $PYENV_ROOT/shims/python3 -
+
+# Poetry is installed to /root/.local/bin
 export PATH="/root/.local/bin:$PATH"
 
 # =============================================================================
@@ -147,9 +179,11 @@ echo "Creating application user..."
 useradd -m -s /bin/bash scraper
 usermod -aG sudo scraper
 
-# Setup .bashrc for scraper user
+# Setup .bashrc for scraper user with pyenv
 cat >> /home/scraper/.bashrc << 'EOF'
-export PATH="$HOME/.local/bin:$PATH"
+export PYENV_ROOT="/opt/pyenv"
+export PATH="$PYENV_ROOT/bin:$HOME/.local/bin:$PATH"
+eval "$(pyenv init -)"
 export DISPLAY=:99
 EOF
 
@@ -166,18 +200,34 @@ git clone --branch $GITHUB_BRANCH $GITHUB_REPO_URL .
 chown -R scraper:scraper $APP_DIR
 
 # =============================================================================
+# INSTALL POETRY FOR SCRAPER USER
+# =============================================================================
+
+echo "Installing Poetry for scraper user..."
+# Set pyenv permissions so scraper can use it
+chmod -R 755 /opt/pyenv
+# Allow scraper to write to shims directory (needed for pyenv rehash)
+chown -R scraper:scraper /opt/pyenv/shims
+
+# Install Poetry for scraper user using pyenv's Python
+sudo -u scraper bash -c 'export PYENV_ROOT="/opt/pyenv" && export PATH="$PYENV_ROOT/bin:$PATH" && eval "$(pyenv init -)" && curl -sSL https://install.python-poetry.org | python3 -'
+
+# =============================================================================
 # INSTALL PYTHON DEPENDENCIES
 # =============================================================================
 
 echo "Installing Python dependencies..."
 cd $APP_DIR
-sudo -u scraper /root/.local/bin/poetry config virtualenvs.in-project true
-sudo -u scraper /root/.local/bin/poetry install --no-interaction
+
+# Configure and install dependencies as scraper user with pyenv
+sudo -u scraper bash -c 'export PYENV_ROOT="/opt/pyenv" && export PATH="$PYENV_ROOT/bin:$HOME/.local/bin:$PATH" && eval "$(pyenv init -)" && cd /opt/'"$APP_NAME"' && poetry config virtualenvs.in-project true && poetry install --no-root'
 
 # Install Playwright browsers
 echo "Installing Playwright browsers..."
-sudo -u scraper /root/.local/bin/poetry run playwright install chromium
-sudo -u scraper /root/.local/bin/poetry run playwright install-deps
+sudo -u scraper bash -c 'export PYENV_ROOT="/opt/pyenv" && export PATH="$PYENV_ROOT/bin:$HOME/.local/bin:$PATH" && eval "$(pyenv init -)" && cd /opt/'"$APP_NAME"' && poetry run playwright install chromium'
+
+# Install Playwright system dependencies (needs root, use virtualenv python)
+DEBIAN_FRONTEND=noninteractive $APP_DIR/.venv/bin/python -m playwright install-deps
 
 # =============================================================================
 # FETCH SECRETS FROM SSM
@@ -268,11 +318,41 @@ cat > /home/scraper/.vnc/xstartup << 'EOF'
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 export XKL_XMODMAP_DISABLE=1
+# Disable screen locker
+xset s off
+xset -dpms
+xset s noblank
 exec startxfce4
 EOF
 chmod +x /home/scraper/.vnc/xstartup
 
 chown -R scraper:scraper /home/scraper/.vnc
+
+# Disable XFCE screen locker and power management
+mkdir -p /home/scraper/.config/xfce4/xfconf/xfce-perchannel-xml
+cat > /home/scraper/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-screensaver.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="saver" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+  <property name="lock" type="empty">
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+
+cat > /home/scraper/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-power-manager.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-power-manager" version="1.0">
+  <property name="xfce4-power-manager" type="empty">
+    <property name="dpms-enabled" type="bool" value="false"/>
+    <property name="lock-screen-suspend-hibernate" type="bool" value="false"/>
+  </property>
+</channel>
+EOF
+
+chown -R scraper:scraper /home/scraper/.config
 
 # =============================================================================
 # CONFIGURE NGINX FOR NOVNC
@@ -393,7 +473,7 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Scraper Service
+# Scraper Service (with flock to prevent concurrent executions)
 cat > /etc/systemd/system/scraper.service << EOF
 [Unit]
 Description=ExpertelIQ2 Webscraper
@@ -407,24 +487,27 @@ Group=scraper
 WorkingDirectory=$APP_DIR
 Environment=DISPLAY=:99
 Environment=HOME=/home/scraper
-ExecStart=/bin/bash -c 'cd $APP_DIR && /home/scraper/.local/bin/poetry run python main.py'
+Environment=PYENV_ROOT=/opt/pyenv
+Environment=PATH=/opt/pyenv/shims:/opt/pyenv/bin:/home/scraper/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# Use flock to prevent concurrent executions (-n = non-blocking, exits immediately if lock is held)
+ExecStart=/usr/bin/flock -n /var/lock/scraper.lock /home/scraper/.local/bin/poetry run python main.py
 StandardOutput=append:/var/log/scraper/scraper.log
 StandardError=append:/var/log/scraper/scraper.log
 
-# Notify on failure
-ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" != "0" ]; then aws sns publish --topic-arn "$SNS_TOPIC_ARN" --message "Scraper failed with exit code \$EXIT_STATUS" --subject "Scraper Error - $ENVIRONMENT" --region $AWS_REGION; fi'
+# Notify on failure (exit code 1 = flock couldn't acquire lock, which is expected - don't notify)
+ExecStopPost=/bin/bash -c 'if [ "\$EXIT_STATUS" != "0" ] && [ "\$EXIT_STATUS" != "1" ]; then aws sns publish --topic-arn "$SNS_TOPIC_ARN" --message "Scraper failed with exit code \$EXIT_STATUS" --subject "Scraper Error - $ENVIRONMENT" --region $AWS_REGION; fi'
 EOF
 
-# Scraper Timer (23:00 and 12:00 EST)
+# Scraper Timer (every 30 minutes)
 cat > /etc/systemd/system/scraper.timer << EOF
 [Unit]
-Description=Run scraper at 23:00 and 12:00 EST daily
+Description=Run scraper every 30 minutes (with flock mutex to prevent overlapping)
 
 [Timer]
-# 23:00 EST = 04:00 UTC (next day)
-# 12:00 EST = 17:00 UTC
-OnCalendar=*-*-* 04:00:00
-OnCalendar=*-*-* 17:00:00
+# Run every 30 minutes (at :00 and :30 of each hour)
+OnCalendar=*:00,30
+# Randomize start by up to 60 seconds to avoid thundering herd
+RandomizedDelaySec=60
 Persistent=true
 Unit=scraper.service
 
@@ -443,6 +526,8 @@ Type=simple
 User=scraper
 Group=scraper
 WorkingDirectory=$APP_DIR
+Environment=PYENV_ROOT=/opt/pyenv
+Environment=PATH=/opt/pyenv/shims:/opt/pyenv/bin:/home/scraper/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=$APP_DIR/.env
 ExecStart=/home/scraper/.local/bin/poetry run uvicorn mfa.main:app --host 127.0.0.1 --port 7000
 Restart=always
@@ -457,6 +542,10 @@ EOF
 # Create log directory
 mkdir -p /var/log/scraper
 chown scraper:scraper /var/log/scraper
+
+# Create lock file for flock with correct permissions
+touch /var/lock/scraper.lock
+chown scraper:scraper /var/lock/scraper.lock
 
 # Reload and enable services
 systemctl daemon-reload
@@ -555,13 +644,15 @@ echo "Password: (stored in SSM)"
 echo ""
 echo "Services:"
 echo "  - MFA Service: Running on port 7000 (internal only)"
-echo "  - Scraper: Runs at 23:00 EST and 12:00 EST"
+echo "  - Scraper: Runs every 30 minutes (with flock mutex)"
 echo ""
 echo "Commands:"
-echo "  systemctl status mfa          - Check MFA service"
+echo "  systemctl status mfa           - Check MFA service"
 echo "  systemctl status scraper.timer - Check scraper timer"
-echo "  journalctl -u mfa -f          - View MFA logs"
-echo "  journalctl -u scraper -f      - View scraper logs"
+echo "  systemctl list-timers          - List all timers"
+echo "  journalctl -u mfa -f           - View MFA logs"
+echo "  journalctl -u scraper -f       - View scraper logs"
+echo "  flock -n /var/lock/scraper.lock echo 'Lock free' - Check if scraper is running"
 echo "=============================================="
 
 # Send deployment notification

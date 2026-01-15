@@ -71,19 +71,19 @@ variable "novnc_allowed_cidrs" {
 variable "github_repository_url" {
   description = "GitHub repository URL"
   type        = string
-  default     = "https://github.com/alegranados03/expertel_webscrapers.git"
+  default     = "https://github.com/Expertel-2-0/expertel_webscrapers.git"
 }
 
 variable "github_branch" {
   description = "GitHub branch for QA environment"
   type        = string
-  default     = "main"
+  default     = "qa"
 }
 
 variable "enable_webhook" {
   description = "Enable GitHub webhook for automatic builds"
   type        = bool
-  default     = false  # Set to true after first manual deploy
+  default     = true
 }
 
 # -----------------------------------------------------------------------------

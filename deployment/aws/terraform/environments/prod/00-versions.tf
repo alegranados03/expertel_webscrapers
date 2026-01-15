@@ -17,11 +17,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "experteliq2-scraper-terraform-state-prod"
-    key            = "scraper/prod/terraform.tfstate"
-    region         = "us-east-2"
-    encrypt        = true
-    dynamodb_table = "experteliq2-scraper-terraform-locks-prod"
+    bucket       = "experteliq2-scraper-terraform-state-prod"
+    key          = "scraper/prod/terraform.tfstate"
+    region       = "us-east-2"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 

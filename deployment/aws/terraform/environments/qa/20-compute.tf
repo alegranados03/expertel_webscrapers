@@ -21,21 +21,20 @@ module "scraper_instance" {
   root_volume_size = var.root_volume_size
 
   # Security
-  database_security_group_id = data.aws_security_group.database.id
+  database_security_group_id = data.aws_security_group.backend_app.id
   ssh_allowed_cidrs          = var.ssh_allowed_cidrs
   novnc_allowed_cidrs        = var.novnc_allowed_cidrs
 
   # Application
   github_repo_url   = var.github_repository_url
   github_branch     = var.github_branch
-  s3_bucket_name    = data.aws_s3_bucket.backend.bucket
   sns_topic_arn     = module.notifications.sns_topic_arn
   screen_resolution = var.screen_resolution
   timezone          = var.timezone
 
   # Logs
   log_retention_days = var.log_retention_days
-  create_elastic_ip  = true
+  create_elastic_ip  = false
 
   tags = local.common_tags
 

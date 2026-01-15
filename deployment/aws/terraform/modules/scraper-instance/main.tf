@@ -100,8 +100,10 @@ resource "aws_iam_role_policy" "ssm_parameters" {
   })
 }
 
-# S3 Access for downloads/uploads
+# S3 Access for downloads/uploads (optional)
 resource "aws_iam_role_policy" "s3_access" {
+  count = var.s3_bucket_name != "" ? 1 : 0
+
   name = "${var.app_name}-${var.environment}-s3-access"
   role = aws_iam_role.scraper.id
 
@@ -219,7 +221,7 @@ resource "aws_instance" "scraper" {
     })
   }
 
-  user_data = base64encode(templatefile("${path.module}/templates/user_data.sh", {
+  user_data_base64 = base64gzip(templatefile("${path.module}/templates/user_data.sh", {
     environment         = var.environment
     app_name            = var.app_name
     aws_region          = var.aws_region

@@ -75,9 +75,9 @@ variable "github_repository_url" {
 }
 
 variable "github_branch" {
-  description = "GitHub branch for QA environment"
+  description = "GitHub branch for DEV environment"
   type        = string
-  default     = "main"
+  default     = "develop"
 }
 
 variable "enable_webhook" {

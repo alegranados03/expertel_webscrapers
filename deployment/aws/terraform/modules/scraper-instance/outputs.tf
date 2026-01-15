@@ -33,8 +33,8 @@ output "iam_instance_profile_name" {
 }
 
 output "novnc_url" {
-  description = "URL to access noVNC (requires DNS configuration)"
-  value       = "https://scraper-${var.environment}.expertel.com/vnc/"
+  description = "URL to access noVNC"
+  value       = "https://${var.create_elastic_ip ? aws_eip.scraper[0].public_ip : aws_instance.scraper.public_ip}/vnc/"
 }
 
 output "ssh_command" {
