@@ -256,3 +256,22 @@ script_testing/
 web_scrapers/examples/
 flow_test/
 browser_profiles/
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Lambda packages (generated)
+*.zip
+
+# Temporary files
+tmpclaude-*
+emails_output.txt
+.context/
+
+# Downloaded scraper files
+downloads/
