@@ -262,7 +262,10 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 3. Configure filters
             account_number = billing_cycle.account.number
             self.logger.info(f"Configuring filters for account: {account_number}")
-            self._configure_filters(account_number)
+            if not self._configure_filters(account_number):
+                self.logger.error(f"Failed to configure filters for Device Report, aborting")
+                self._navigate_back_to_reports()
+                return None
 
             # 4. Click Apply filters
             self._click_apply_filters()
@@ -339,17 +342,26 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 3. Configure filters
             account_number = billing_cycle.account.number
             self.logger.info(f"Configuring filters for account: {account_number}")
-            self._configure_filters(account_number)
+            if not self._configure_filters(account_number):
+                self.logger.error(f"Failed to configure filters for Activation & Deactivation Report, aborting")
+                self._navigate_back_to_reports()
+                return None
 
             # Configure Bill cycle from and Bill cycle to
             start_month_option = self._format_short_month_option(billing_cycle.start_date)
             end_month_option = self._format_short_month_option(billing_cycle.end_date)
 
             self.logger.info(f"Setting Bill cycle from: {start_month_option}")
-            self._select_bill_cycle_from(start_month_option)
+            if not self._select_bill_cycle_from(start_month_option):
+                self.logger.error(f"Failed to set Bill cycle from: {start_month_option}, aborting")
+                self._navigate_back_to_reports()
+                return None
 
             self.logger.info(f"Setting Bill cycle to: {end_month_option}")
-            self._select_bill_cycle_to(end_month_option)
+            if not self._select_bill_cycle_to(end_month_option):
+                self.logger.error(f"Failed to set Bill cycle to: {end_month_option}, aborting")
+                self._navigate_back_to_reports()
+                return None
 
             # 4. Click Apply filters
             self._click_apply_filters()
@@ -426,7 +438,10 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 3. Configure filters
             account_number = billing_cycle.account.number
             self.logger.info(f"Configuring filters for account: {account_number}")
-            self._configure_filters(account_number)
+            if not self._configure_filters(account_number):
+                self.logger.error(f"Failed to configure filters for Suspended Wireless Numbers Report, aborting")
+                self._navigate_back_to_reports()
+                return None
 
             # 4. Click Apply filters
             self._click_apply_filters()
@@ -480,8 +495,12 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         """Formats date to 'Nov-25' for Bill cycle dropdowns."""
         return f"{target_date.strftime('%b')}-{target_date.strftime('%y')}"
 
-    def _configure_filters(self, account_number: str):
-        """Configures View by and Select number filters."""
+    def _configure_filters(self, account_number: str) -> bool:
+        """Configures View by and Select number filters.
+
+        Returns:
+            True if filters were configured successfully, False otherwise.
+        """
         try:
             # View by dropdown
             view_by_xpath = (
@@ -489,18 +508,24 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 "//app-dropdown//div[@role='combobox']"
             )
 
-            if self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
-                self.browser_wrapper.click_element(view_by_xpath)
-                time.sleep(1)
+            if not self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
+                self.logger.error("View by dropdown not found")
+                return False
 
-                # Select "Account number" option
-                account_option_xpath = (
-                    "//ul[@role='listbox']//li[@role='option' and contains(text(), 'Account number')]"
-                )
-                if self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
-                    self.browser_wrapper.click_element(account_option_xpath)
-                    self.logger.info("Selected 'Account number' in View by")
-                    time.sleep(1)
+            self.browser_wrapper.click_element(view_by_xpath)
+            time.sleep(1)
+
+            # Select "Account number" option
+            account_option_xpath = (
+                "//ul[@role='listbox']//li[@role='option' and contains(text(), 'Account number')]"
+            )
+            if not self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
+                self.logger.error("'Account number' option not found in View by dropdown")
+                return False
+
+            self.browser_wrapper.click_element(account_option_xpath)
+            self.logger.info("Selected 'Account number' in View by")
+            time.sleep(1)
 
             # Select number dropdown
             select_number_xpath = (
@@ -508,54 +533,86 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 "/following-sibling::div//app-dropdown//div[@role='combobox']"
             )
 
-            if self.browser_wrapper.is_element_visible(select_number_xpath, timeout=5000):
-                self.browser_wrapper.click_element(select_number_xpath)
-                time.sleep(1)
+            if not self.browser_wrapper.is_element_visible(select_number_xpath, timeout=5000):
+                self.logger.error("Select number dropdown not found")
+                return False
 
-                # Select account that contains the number
-                account_option_xpath = (
-                    f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{account_number}')]"
-                )
-                if self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
-                    self.browser_wrapper.click_element(account_option_xpath)
-                    self.logger.info(f"Selected account: {account_number}")
+            self.browser_wrapper.click_element(select_number_xpath)
+            time.sleep(1)
+
+            # Select account that contains the number
+            account_option_xpath = (
+                f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{account_number}')]"
+            )
+            if not self.browser_wrapper.is_element_visible(account_option_xpath, timeout=3000):
+                self.logger.error(f"Account number '{account_number}' not found in dropdown options")
+                return False
+
+            self.browser_wrapper.click_element(account_option_xpath)
+            self.logger.info(f"Selected account: {account_number}")
+            return True
 
         except Exception as e:
-            self.logger.warning(f"Error configuring filters: {str(e)}")
+            self.logger.error(f"Error configuring filters: {str(e)}")
+            return False
 
-    def _select_bill_cycle_from(self, month_option: str):
-        """Selects Bill cycle from dropdown."""
+    def _select_bill_cycle_from(self, month_option: str) -> bool:
+        """Selects Bill cycle from dropdown.
+
+        Returns:
+            True if the option was selected successfully, False otherwise.
+        """
         try:
             bill_cycle_from_xpath = '//*[@id="monthRangeFrom"]//div[@role="combobox"]'
 
-            if self.browser_wrapper.is_element_visible(bill_cycle_from_xpath, timeout=5000):
-                self.browser_wrapper.click_element(bill_cycle_from_xpath)
-                time.sleep(1)
+            if not self.browser_wrapper.is_element_visible(bill_cycle_from_xpath, timeout=5000):
+                self.logger.error("Bill cycle from dropdown not found")
+                return False
 
-                option_xpath = f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{month_option}')]"
-                if self.browser_wrapper.is_element_visible(option_xpath, timeout=3000):
-                    self.browser_wrapper.click_element(option_xpath)
-                    self.logger.info(f"Selected Bill cycle from: {month_option}")
+            self.browser_wrapper.click_element(bill_cycle_from_xpath)
+            time.sleep(1)
+
+            option_xpath = f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{month_option}')]"
+            if not self.browser_wrapper.is_element_visible(option_xpath, timeout=3000):
+                self.logger.error(f"Bill cycle from option '{month_option}' not found")
+                return False
+
+            self.browser_wrapper.click_element(option_xpath)
+            self.logger.info(f"Selected Bill cycle from: {month_option}")
+            return True
 
         except Exception as e:
-            self.logger.warning(f"Error selecting Bill cycle from: {str(e)}")
+            self.logger.error(f"Error selecting Bill cycle from: {str(e)}")
+            return False
 
-    def _select_bill_cycle_to(self, month_option: str):
-        """Selects Bill cycle to dropdown."""
+    def _select_bill_cycle_to(self, month_option: str) -> bool:
+        """Selects Bill cycle to dropdown.
+
+        Returns:
+            True if the option was selected successfully, False otherwise.
+        """
         try:
             bill_cycle_to_xpath = '//*[@id="monthRangeTo"]//div[@role="combobox"]'
 
-            if self.browser_wrapper.is_element_visible(bill_cycle_to_xpath, timeout=5000):
-                self.browser_wrapper.click_element(bill_cycle_to_xpath)
-                time.sleep(1)
+            if not self.browser_wrapper.is_element_visible(bill_cycle_to_xpath, timeout=5000):
+                self.logger.error("Bill cycle to dropdown not found")
+                return False
 
-                option_xpath = f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{month_option}')]"
-                if self.browser_wrapper.is_element_visible(option_xpath, timeout=3000):
-                    self.browser_wrapper.click_element(option_xpath)
-                    self.logger.info(f"Selected Bill cycle to: {month_option}")
+            self.browser_wrapper.click_element(bill_cycle_to_xpath)
+            time.sleep(1)
+
+            option_xpath = f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{month_option}')]"
+            if not self.browser_wrapper.is_element_visible(option_xpath, timeout=3000):
+                self.logger.error(f"Bill cycle to option '{month_option}' not found")
+                return False
+
+            self.browser_wrapper.click_element(option_xpath)
+            self.logger.info(f"Selected Bill cycle to: {month_option}")
+            return True
 
         except Exception as e:
-            self.logger.warning(f"Error selecting Bill cycle to: {str(e)}")
+            self.logger.error(f"Error selecting Bill cycle to: {str(e)}")
+            return False
 
     def _click_apply_filters(self):
         """Clicks Apply filters button if enabled."""

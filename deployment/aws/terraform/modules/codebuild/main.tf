@@ -184,6 +184,11 @@ resource "aws_codebuild_project" "scraper" {
       name  = "APP_DIR"
       value = "/opt/${var.app_name}"
     }
+
+    environment_variable {
+      name  = "GITHUB_BRANCH"
+      value = var.source_branch
+    }
   }
 
   logs_config {

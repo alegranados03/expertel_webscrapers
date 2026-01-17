@@ -162,7 +162,8 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # Step 5: Change bill cycle date via iframe
             self.logger.info("Changing bill cycle date...")
             if not self._change_bill_cycle_date(billing_cycle.end_date):
-                self.logger.warning("Could not change bill cycle date, continuing with default...")
+                self.logger.error(f"Could not change bill cycle date to {billing_cycle.end_date}, aborting report download")
+                return None
             time.sleep(2)
 
             # Step 6: Apply date filter

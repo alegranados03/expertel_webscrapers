@@ -191,16 +191,18 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             time.sleep(3)
 
             # Verificar y configurar filtros (cuenta + fecha)
-            self._ensure_filters_configured(billing_cycle, needs_date_filter=True)
-
-            for slug in charges_reports:
-                report_config = self.REPORT_CONFIG.get(slug)
-                if report_config:
-                    file_info = self._download_single_report(
-                        slug, report_config, billing_cycle_file_map, billing_cycle
-                    )
-                    if file_info:
-                        downloaded_files.append(file_info)
+            if not self._ensure_filters_configured(billing_cycle, needs_date_filter=True):
+                self.logger.error("Failed to configure filters for Charges and usage tab, skipping this tab")
+                # No abortamos todo el scraper, continuamos con Inventory que no necesita fecha
+            else:
+                for slug in charges_reports:
+                    report_config = self.REPORT_CONFIG.get(slug)
+                    if report_config:
+                        file_info = self._download_single_report(
+                            slug, report_config, billing_cycle_file_map, billing_cycle
+                        )
+                        if file_info:
+                            downloaded_files.append(file_info)
 
             # 2. Procesar reportes de "Inventory"
             self.logger.info("Processing Inventory reports...")
@@ -208,16 +210,18 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             time.sleep(5)
 
             # Verificar y configurar solo filtro de cuenta (no hay filtro de fecha en Inventory)
-            self._ensure_filters_configured(billing_cycle, needs_date_filter=False)
-
-            for slug in inventory_reports:
-                report_config = self.REPORT_CONFIG.get(slug)
-                if report_config:
-                    file_info = self._download_single_report(
-                        slug, report_config, billing_cycle_file_map, billing_cycle
-                    )
-                    if file_info:
-                        downloaded_files.append(file_info)
+            if not self._ensure_filters_configured(billing_cycle, needs_date_filter=False):
+                self.logger.error("Failed to configure account filter for Inventory tab, skipping this tab")
+                # Si falla el filtro de cuenta, no podemos descargar nada correcto de este tab
+            else:
+                for slug in inventory_reports:
+                    report_config = self.REPORT_CONFIG.get(slug)
+                    if report_config:
+                        file_info = self._download_single_report(
+                            slug, report_config, billing_cycle_file_map, billing_cycle
+                        )
+                        if file_info:
+                            downloaded_files.append(file_info)
 
             # 3. Reset a pantalla principal
             self._reset_to_main_screen()
@@ -233,14 +237,24 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 pass
             return downloaded_files
 
-    def _ensure_filters_configured(self, billing_cycle: BillingCycle, needs_date_filter: bool = True):
-        """Verifica que los filtros estén configurados correctamente, si no, los configura."""
+    def _ensure_filters_configured(self, billing_cycle: BillingCycle, needs_date_filter: bool = True) -> bool:
+        """Verifica que los filtros estén configurados correctamente, si no, los configura.
+
+        Returns:
+            True if filters are configured successfully, False otherwise.
+        """
         self.logger.info("Verifying filters configuration...")
 
         # Verificar filtro de cuenta
         if not self._is_account_filter_configured(billing_cycle):
             self.logger.info("Account filter not configured, configuring now...")
-            self._configure_account_filter(billing_cycle)
+            if not self._configure_account_filter(billing_cycle):
+                self.logger.error("Failed to configure account filter")
+                return False
+            # Verify the filter was actually applied
+            if not self._is_account_filter_configured(billing_cycle):
+                self.logger.error("Account filter configuration failed - filter not applied correctly")
+                return False
         else:
             self.logger.info("Account filter already configured correctly")
 
@@ -248,9 +262,17 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         if needs_date_filter:
             if not self._is_date_filter_configured(billing_cycle):
                 self.logger.info("Date filter not configured, configuring now...")
-                self._configure_date_range(billing_cycle)
+                if not self._configure_date_range(billing_cycle):
+                    self.logger.error("Failed to configure date range filter")
+                    return False
+                # Verify the filter was actually applied
+                if not self._is_date_filter_configured(billing_cycle):
+                    self.logger.error("Date range filter configuration failed - filter not applied correctly")
+                    return False
             else:
                 self.logger.info("Date filter already configured correctly")
+
+        return True
 
     def _is_account_filter_configured(self, billing_cycle: BillingCycle) -> bool:
         """Verifica si el filtro de cuenta está configurado correctamente."""
@@ -508,8 +530,12 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         except Exception as e:
             self.logger.error(f"Error going back to reports: {str(e)}\n{traceback.format_exc()}")
 
-    def _configure_account_filter(self, billing_cycle: BillingCycle):
-        """Configura el filtro de cuenta basado en el billing cycle."""
+    def _configure_account_filter(self, billing_cycle: BillingCycle) -> bool:
+        """Configura el filtro de cuenta basado en el billing cycle.
+
+        Returns:
+            True if account filter was configured successfully, False otherwise.
+        """
         try:
             account_number = billing_cycle.account.number
             self.logger.info(f"Configuring account filter for: {account_number}")
@@ -517,18 +543,27 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 1. Click en View by dropdown
             view_by_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[1]"
             self.logger.info("Clicking View by dropdown...")
+            if not self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
+                self.logger.error("View by dropdown not found")
+                return False
             self.browser_wrapper.click_element(view_by_xpath)
             time.sleep(2)
 
             # 2. Seleccionar opción "Accounts"
             accounts_option_xpath = "//*[@id='LevelDataDropdownList_multipleaccounts']"
             self.logger.info("Selecting Accounts option...")
+            if not self.browser_wrapper.is_element_visible(accounts_option_xpath, timeout=5000):
+                self.logger.error("Accounts option not found in dropdown")
+                return False
             self.browser_wrapper.click_element(accounts_option_xpath)
             time.sleep(2)
 
             # 3. Escribir número de cuenta en el input
             account_input_xpath = "//*[@id='scopeExpandedAccountMenu']/div[1]/div/div[2]/input"
             self.logger.info(f"Entering account number: {account_number}")
+            if not self.browser_wrapper.is_element_visible(account_input_xpath, timeout=5000):
+                self.logger.error("Account input field not found")
+                return False
             self.browser_wrapper.clear_and_type(account_input_xpath, account_number)
             time.sleep(3)  # Esperar que se actualice el listado
 
@@ -544,21 +579,31 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     self.browser_wrapper.click_element(first_option_xpath)
                 time.sleep(1)
             else:
-                self.logger.warning("Account option not found in list")
+                self.logger.error(f"Account option not found in list for account: {account_number}")
+                return False
 
             # 5. Click en OK button
             ok_button_xpath = "//*[@id='scopeExpandedAccountMenu']/div[4]/button"
             self.logger.info("Clicking OK button...")
+            if not self.browser_wrapper.is_element_visible(ok_button_xpath, timeout=5000):
+                self.logger.error("OK button not found")
+                return False
             self.browser_wrapper.click_element(ok_button_xpath)
             time.sleep(3)
 
             self.logger.info("Account filter configured successfully")
+            return True
 
         except Exception as e:
             self.logger.error(f"Error configuring account filter: {str(e)}\n{traceback.format_exc()}")
+            return False
 
-    def _configure_date_range(self, billing_cycle: BillingCycle):
-        """Configura el rango de fechas basado en el billing cycle."""
+    def _configure_date_range(self, billing_cycle: BillingCycle) -> bool:
+        """Configura el rango de fechas basado en el billing cycle.
+
+        Returns:
+            True if date range was configured successfully, False otherwise.
+        """
         try:
             end_date = billing_cycle.end_date
             month_name = calendar.month_name[end_date.month]
@@ -570,6 +615,9 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # 1. Click en Date range dropdown
             date_range_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[2]"
             self.logger.info("Clicking Date range dropdown...")
+            if not self.browser_wrapper.is_element_visible(date_range_xpath, timeout=5000):
+                self.logger.error("Date range dropdown not found")
+                return False
             self.browser_wrapper.click_element(date_range_xpath)
             time.sleep(2)
 
@@ -589,15 +637,23 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info(f"Searching for date option: '{option_text_bills}' or '{option_text_simple}'")
 
             # Intentar seleccionar con "bills" primero, luego sin
+            date_selected = False
             try:
                 self.browser_wrapper.select_dropdown_option(select_xpath, option_text_bills)
                 self.logger.info(f"Selected: {option_text_bills}")
+                date_selected = True
             except Exception:
                 try:
                     self.browser_wrapper.select_dropdown_option(select_xpath, option_text_simple)
                     self.logger.info(f"Selected: {option_text_simple}")
+                    date_selected = True
                 except Exception as e:
-                    self.logger.warning(f"Could not select date option: {str(e)}")
+                    self.logger.error(f"Could not select date option '{target_option}': {str(e)}")
+                    return False
+
+            if not date_selected:
+                self.logger.error(f"Failed to select date option for {target_option}")
+                return False
 
             # 4. Click en Apply button para aplicar los cambios
             apply_button_xpath = "//*[@id='btnApply']"
@@ -606,12 +662,15 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.browser_wrapper.click_element(apply_button_xpath)
                 time.sleep(5)  # Esperar que se apliquen los cambios
             else:
-                self.logger.warning("Apply button not found")
+                self.logger.error("Apply button not found")
+                return False
 
             self.logger.info("Date range configured successfully")
+            return True
 
         except Exception as e:
             self.logger.error(f"Error configuring date range: {str(e)}\n{traceback.format_exc()}")
+            return False
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de AT&T."""

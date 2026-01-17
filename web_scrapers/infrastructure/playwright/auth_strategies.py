@@ -764,14 +764,21 @@ class ATTAuthStrategy(AuthBaseStrategy):
     def _handle_2fa_if_present(self, credentials: Credentials) -> bool:
         self.logger.info("Checking if 2FA is required...")
 
-        email_option_xpath = "//*[@id='option_3']"
-        if not self.browser_wrapper.is_element_visible(email_option_xpath, timeout=10000):
-            self.logger.info("No 2FA elements detected")
+        # Look for the MFA fieldset
+        fieldset_xpath = "/html/body/div[2]/div/form[1]/fieldset"
+        if not self.browser_wrapper.is_element_visible(fieldset_xpath, timeout=10000):
+            self.logger.info("No 2FA fieldset detected")
             return True
 
         self.logger.info("2FA flow detected, proceeding...")
 
-        self.logger.info("Selecting Email option...")
+        # Find and select the first email option (options after the "Email" h2 heading)
+        email_option_xpath = self._find_first_email_option()
+        if not email_option_xpath:
+            self.logger.error("No email option found in 2FA form")
+            return False
+
+        self.logger.info(f"Selecting Email option: {email_option_xpath}")
         self.browser_wrapper.click_element(email_option_xpath)
         time.sleep(2)
 
@@ -808,6 +815,24 @@ class ATTAuthStrategy(AuthBaseStrategy):
             time.sleep(2)
         else:
             self.logger.debug("No modal detected")
+
+    def _find_first_email_option(self) -> Optional[str]:
+        """
+        Find the first email option in the 2FA form.
+
+        The form has radio buttons for SMS and Email. Email options appear after
+        an h2 with id="radiolabel2". Returns the XPath of the first email radio
+        input found, or None if not found.
+        """
+        # XPath to find the first radio input after the Email heading (h2#radiolabel2)
+        email_option_xpath = "//h2[@id='radiolabel2']/following-sibling::div[1]//input[@name='radioOptions']"
+
+        if self.browser_wrapper.is_element_visible(email_option_xpath, timeout=5000):
+            self.logger.info("Found email option after radiolabel2 heading")
+            return email_option_xpath
+
+        self.logger.warning("Email option not found")
+        return None
 
 
 class TMobileAuthStrategy(AuthBaseStrategy):
