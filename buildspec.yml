@@ -27,18 +27,25 @@ phases:
       - echo "Build started at $(date)"
       - echo "Deploying to EC2 instance $INSTANCE_ID..."
       - |
-        # Build the deployment script as a single command to ensure proper execution context
+        # Build the deployment script with proper environment setup
+        # Pattern matches user_data.sh: group scraper commands in single bash -c with env vars
         DEPLOY_SCRIPT="set -e && \
           export HOME=/root && \
           cd $APP_DIR && \
           git config --global --add safe.directory $APP_DIR && \
-          sudo -u scraper HOME=/home/scraper git config --global --add safe.directory $APP_DIR && \
           echo 'Current directory:' && pwd && \
           echo 'Current commit:' && git rev-parse HEAD && \
-          sudo -u scraper HOME=/home/scraper git fetch origin $GITHUB_BRANCH && \
-          sudo -u scraper HOME=/home/scraper git reset --hard origin/$GITHUB_BRANCH && \
+          sudo -u scraper bash -c '\
+            export HOME=/home/scraper && \
+            export PYENV_ROOT=/opt/pyenv && \
+            export PATH=\$PYENV_ROOT/bin:\$HOME/.local/bin:\$PATH && \
+            cd $APP_DIR && \
+            git config --global --add safe.directory $APP_DIR && \
+            git fetch origin $GITHUB_BRANCH && \
+            git reset --hard origin/$GITHUB_BRANCH && \
+            /home/scraper/.local/bin/poetry install --no-root \
+          ' && \
           echo 'New commit:' && git rev-parse HEAD && \
-          sudo -u scraper HOME=/home/scraper /home/scraper/.local/bin/poetry install --no-root && \
           sudo systemctl restart scraper.timer && \
           echo 'Deployment completed successfully'"
 
