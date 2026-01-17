@@ -29,15 +29,16 @@ phases:
       - |
         # Build the deployment script as a single command to ensure proper execution context
         DEPLOY_SCRIPT="set -e && \
+          export HOME=/root && \
           cd $APP_DIR && \
           git config --global --add safe.directory $APP_DIR && \
-          sudo -u scraper git config --global --add safe.directory $APP_DIR && \
+          sudo -u scraper HOME=/home/scraper git config --global --add safe.directory $APP_DIR && \
           echo 'Current directory:' && pwd && \
           echo 'Current commit:' && git rev-parse HEAD && \
-          sudo -u scraper git fetch origin $GITHUB_BRANCH && \
-          sudo -u scraper git reset --hard origin/$GITHUB_BRANCH && \
+          sudo -u scraper HOME=/home/scraper git fetch origin $GITHUB_BRANCH && \
+          sudo -u scraper HOME=/home/scraper git reset --hard origin/$GITHUB_BRANCH && \
           echo 'New commit:' && git rev-parse HEAD && \
-          sudo -u scraper /home/scraper/.local/bin/poetry install --no-root && \
+          sudo -u scraper HOME=/home/scraper /home/scraper/.local/bin/poetry install --no-root && \
           sudo systemctl restart scraper.timer && \
           echo 'Deployment completed successfully'"
 
