@@ -195,7 +195,7 @@ def main():
     # Setup logging
     setup_logging(log_level="DEBUG")
     logger = get_logger("main")
-    # logger.setLevel("DEBUG")
+    processor = None
 
     try:
         logger.info("Starting ScraperJob processor")
@@ -204,6 +204,11 @@ def main():
         logger.info("ScraperJob processor completed successfully")
     except Exception as e:
         logger.error(f"Error in main processor: {str(e)}", exc_info=True)
+    finally:
+        if processor and processor.session_manager:
+            logger.info("Cleaning up browser resources...")
+            processor.session_manager.cleanup()
+            logger.info("Cleanup completed")
 
 
 if __name__ == "__main__":

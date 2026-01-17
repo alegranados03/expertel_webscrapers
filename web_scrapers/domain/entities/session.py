@@ -15,9 +15,9 @@ class Carrier(str, Enum):
     BELL = "Bell"
     TELUS = "Telus"
     ROGERS = "Rogers"
-    ATT = "Att"
+    ATT = "AT&T"
     TMOBILE = "T-Mobile"
-    VERIZON = "verizon"
+    VERIZON = "Verizon"
 
 
 class Credentials(BaseModel):
