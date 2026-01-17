@@ -1364,7 +1364,7 @@ class VerizonAuthStrategy(AuthBaseStrategy):
 
             # Open new tab with the MFA link
             self.logger.info("Opening MFA link in new tab...")
-            new_page = self.browser_wrapper.context.new_page()
+            new_page = self.browser_wrapper.page.context.new_page()
             Stealth().apply_stealth_sync(new_page)  # Aplicar stealth a la nueva pagina
             self.browser_wrapper.page = new_page
             new_page.goto(mfa_link)
