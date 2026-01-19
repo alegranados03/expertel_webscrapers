@@ -58,7 +58,7 @@ class FileUploadService:
                 "description": "daily usage",
             },
             "pdf_invoice": {
-                "url_template": f"{self.api_base_url}/api/v1/accounts/billing-cycles/{cycle_id}/pdf-invoice/",
+                "url_template": f"{self.api_base_url}/api/v1/billing-cycles/{cycle_id}/upload-pdf/",
                 "file_id_attr": "pdf_file",
                 "content_type": "application/pdf",
                 "description": "PDF invoice",

@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import traceback
 import uuid
 import zipfile
 from abc import ABC, abstractmethod
@@ -434,27 +435,148 @@ class PDFInvoiceScraperStrategy(ScraperBaseStrategy):
 
     def execute(self, config: ScraperConfig, billing_cycle: BillingCycle, credentials: Credentials) -> ScraperResult:
         try:
+            self.logger.info("=" * 70)
+            self.logger.info("PDF INVOICE SCRAPER - STARTING EXECUTION")
+            self.logger.info("=" * 70)
+            self.logger.info(f"Account: {billing_cycle.account.number if billing_cycle.account else 'N/A'}")
+            self.logger.info(f"Billing Cycle ID: {billing_cycle.id}")
+            self.logger.info(f"Period: {billing_cycle.start_date} to {billing_cycle.end_date}")
+            self.logger.info("-" * 70)
+
             self._prepare_job_directory()
 
+            # Step 1: Find files section
+            self.logger.info("[Step 1/3] Finding files section...")
             files_section = self._find_files_section(config, billing_cycle)
             if not files_section:
-                return ScraperResult(False, error="Could not find files section")
+                error_msg = "Could not find files section for PDF invoice"
+                self.logger.error(f"[Step 1/3] FAILED: {error_msg}")
+                return ScraperResult(False, error=error_msg)
+            self.logger.info("[Step 1/3] OK - Files section found")
 
+            # Step 2: Download files
+            self.logger.info("[Step 2/3] Downloading PDF files...")
             downloaded_files = self._download_files(files_section, config, billing_cycle)
             if not downloaded_files:
-                return ScraperResult(False, error="Could not download files")
+                error_msg = "Could not download PDF files"
+                self.logger.error(f"[Step 2/3] FAILED: {error_msg}")
+                return ScraperResult(False, error=error_msg)
+            self.logger.info(f"[Step 2/3] OK - Downloaded {len(downloaded_files)} file(s)")
 
-            upload_result = self._upload_files_to_endpoint(downloaded_files, config, billing_cycle)
+            # Log downloaded files details
+            for i, f in enumerate(downloaded_files, 1):
+                self.logger.info(f"  [{i}] {f.file_name}")
+                self.logger.info(f"      Path: {f.file_path}")
+                self.logger.info(f"      PDF File ID: {f.pdf_file.id if f.pdf_file else 'NOT MAPPED'}")
+
+            # Step 3: Upload files
+            self.logger.info("[Step 3/3] Uploading PDF files to backend API...")
+            upload_result, upload_error = self._upload_files_to_endpoint_with_details(
+                downloaded_files, config, billing_cycle
+            )
+
             if not upload_result:
-                return ScraperResult(False, error="Error sending files to external endpoint")
+                error_msg = f"Error uploading PDF files: {upload_error}"
+                self.logger.error(f"[Step 3/3] FAILED: {error_msg}")
+                self.logger.warning(f"Job directory kept for investigation: {self.job_downloads_dir}")
+                return ScraperResult(False, error=error_msg)
 
+            self.logger.info("[Step 3/3] OK - All files uploaded successfully")
             self._cleanup_job_directory()
+
+            self.logger.info("=" * 70)
+            self.logger.info("PDF INVOICE SCRAPER - COMPLETED SUCCESSFULLY")
+            self.logger.info("=" * 70)
+
             return ScraperResult(
-                True, f"Processed {len(downloaded_files)} files", self._create_file_mapping(downloaded_files)
+                True, f"Processed {len(downloaded_files)} PDF files", self._create_file_mapping(downloaded_files)
             )
 
         except Exception as e:
-            return ScraperResult(False, error=str(e))
+            error_msg = f"Exception in PDF Invoice scraper: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.error(traceback.format_exc())
+            return ScraperResult(False, error=error_msg)
+
+    def _upload_files_to_endpoint_with_details(
+        self, files: List[FileDownloadInfo], config: ScraperConfig, billing_cycle: BillingCycle
+    ) -> tuple[bool, str]:
+        """Upload PDF files with detailed error reporting.
+
+        Returns:
+            Tuple of (success: bool, error_message: str)
+        """
+        try:
+            upload_service = FileUploadService()
+
+            self.logger.info(f"[UPLOAD] Starting upload of {len(files)} PDF file(s)")
+            self.logger.info(f"[UPLOAD] API Base URL: {upload_service.api_base_url}")
+            self.logger.info(f"[UPLOAD] API Key configured: {'Yes' if upload_service.api_key else 'NO - MISSING!'}")
+
+            if not upload_service.api_key:
+                return False, "EIQ_BACKEND_API_KEY not configured"
+
+            errors = []
+            success_count = 0
+
+            for i, file_info in enumerate(files, 1):
+                self.logger.info(f"[UPLOAD] Processing file {i}/{len(files)}: {file_info.file_name}")
+
+                # Verificar que el archivo existe
+                if not file_info.file_path or not os.path.exists(file_info.file_path):
+                    error = f"File not found on disk: {file_info.file_path}"
+                    self.logger.error(f"[UPLOAD] {error}")
+                    errors.append(error)
+                    continue
+
+                # Verificar que tiene pdf_file mapping
+                if not file_info.pdf_file:
+                    error = f"No pdf_file mapping for {file_info.file_name} - cannot determine upload endpoint"
+                    self.logger.error(f"[UPLOAD] {error}")
+                    errors.append(error)
+                    continue
+
+                # Construir URL
+                url = f"{upload_service.api_base_url}/api/v1/billing-cycles/{billing_cycle.id}/upload-pdf/"
+                self.logger.info(f"[UPLOAD] URL: {url}")
+
+                # Intentar upload
+                try:
+                    result = upload_service._upload_single_file(
+                        file_info=file_info,
+                        billing_cycle=billing_cycle,
+                        upload_type="pdf_invoice",
+                    )
+
+                    if result:
+                        self.logger.info(f"[UPLOAD] SUCCESS: {file_info.file_name}")
+                        success_count += 1
+                    else:
+                        error = f"Upload failed for {file_info.file_name} - service returned False"
+                        self.logger.error(f"[UPLOAD] {error}")
+                        errors.append(error)
+
+                except Exception as upload_exc:
+                    error = f"Exception uploading {file_info.file_name}: {str(upload_exc)}"
+                    self.logger.error(f"[UPLOAD] {error}")
+                    errors.append(error)
+
+            # Resumen
+            self.logger.info(f"[UPLOAD] SUMMARY: {success_count}/{len(files)} files uploaded successfully")
+
+            if errors:
+                error_summary = f"{len(errors)} upload error(s): " + "; ".join(errors[:3])
+                if len(errors) > 3:
+                    error_summary += f" ... and {len(errors) - 3} more"
+                return False, error_summary
+
+            return True, ""
+
+        except Exception as e:
+            error_msg = f"Exception in upload process: {str(e)}"
+            self.logger.error(error_msg)
+            self.logger.error(traceback.format_exc())
+            return False, error_msg
 
     @abstractmethod
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:

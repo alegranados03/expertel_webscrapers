@@ -1,3 +1,4 @@
+import logging
 import time
 from datetime import datetime
 from typing import Dict, Optional, Type
@@ -26,7 +27,7 @@ class SessionManager:
     CARRIERS_WITH_PERSISTENT_PROFILE = {Carrier.ROGERS}
 
     def __init__(self, browser_type: Optional[Navigators] = None):
-
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.browser_manager = BrowserManager()
         self.browser_type = browser_type
         self.session_state = SessionState()
@@ -89,6 +90,16 @@ class SessionManager:
                     self._current_login_url = None
                 return False
 
+            # Si el browser confirma que estamos logueados pero session_state está en ERROR,
+            # reparar el estado ya que la sesión sigue siendo válida
+            if is_active and self.session_state.is_error():
+                self.logger.info(
+                    f"[SESSION REPAIR] Browser confirms session is active but state was ERROR. "
+                    f"Repairing session state for {self.session_state.carrier}."
+                )
+                self.session_state.status = SessionStatus.LOGGED_IN
+                self.session_state.error_message = None
+
             return is_active
 
         except Exception as e:
@@ -138,6 +149,11 @@ class SessionManager:
 
     def login(self, credentials: Credentials, scraper_type: ScraperType) -> bool:
         try:
+            self.logger.info(
+                f"[SESSION CHECK] Evaluating session reuse for {credentials.carrier}, "
+                f"scraper_type={scraper_type}, session_state.status={self.session_state.status}"
+            )
+
             if self.session_state.is_logged_in():
                 if (
                     self.session_state.carrier == credentials.carrier
@@ -145,6 +161,10 @@ class SessionManager:
                     and self.session_state.credentials.id == credentials.id
                     and self._scraper_type == scraper_type
                 ):
+                    self.logger.info(
+                        f"[SESSION REUSE] Reusing existing session for {credentials.carrier} "
+                        f"(same carrier, credentials, scraper_type)"
+                    )
                     return True
 
                 # Si cambió el scraper_type, verificar si la URL de login también cambió
@@ -157,15 +177,32 @@ class SessionManager:
 
                         # Solo hacer logout si la URL de login cambió
                         if new_login_url != self._current_login_url:
+                            self.logger.info(
+                                f"[SESSION LOGOUT] Login URL changed from {self._current_login_url} "
+                                f"to {new_login_url}, logging out"
+                            )
                             self.logout()
                         else:
                             # La URL es la misma, solo actualizar scraper_type y reutilizar sesión
+                            self.logger.info(
+                                f"[SESSION REUSE] Reusing session - same login URL, "
+                                f"updating scraper_type from {self._scraper_type} to {scraper_type}"
+                            )
                             self._scraper_type = scraper_type
                             return True
                     else:
+                        self.logger.info(f"[SESSION LOGOUT] No auth strategy found for new scraper_type, logging out")
                         self.logout()
                 else:
+                    self.logger.info(
+                        f"[SESSION LOGOUT] Credentials changed (current_id={self.session_state.credentials.id if self.session_state.credentials else None}, "
+                        f"new_id={credentials.id}), logging out"
+                    )
                     self.logout()
+            else:
+                self.logger.info(
+                    f"[SESSION NEW] session_state.is_logged_in()=False, proceeding with fresh login"
+                )
 
             # CAMBIO CLAVE: Búsqueda con tupla (carrier, scraper_type)
             auth_strategy_class = self._auth_strategies.get((credentials.carrier, scraper_type))
