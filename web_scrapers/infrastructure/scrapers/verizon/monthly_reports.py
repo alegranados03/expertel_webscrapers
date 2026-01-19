@@ -31,37 +31,46 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         self.logger = logging.getLogger(self.__class__.__name__)
 
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
-        """Navigates to Verizon reports section."""
+        """Navigates to Verizon reports section and opens Raw Data Download modal."""
         try:
             self.logger.info("Navigating to Verizon monthly reports...")
 
             # 1. Click on Reports tab
             reports_tab_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/a'
-            self.logger.info("Clicking on Reports tab...")
+            self.logger.info("[Step 1/3] Clicking on Reports tab...")
 
             if self.browser_wrapper.is_element_visible(reports_tab_xpath, timeout=10000):
                 self.browser_wrapper.click_element(reports_tab_xpath)
                 time.sleep(2)
             else:
-                self.logger.error("Reports tab not found")
+                self.logger.error("[Step 1/3 FAILED] Reports tab not found")
                 self._reset_to_main_screen()
                 return None
 
-            # 2. Click on Raw Data Download
+            # 2. Click on Raw Data Download (this opens a MODAL, not a new page)
             raw_data_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[2]/nav/ul/li[4]/div/div/div[1]/div/ul/li[4]/a'
-            self.logger.info("Clicking on Raw Data Download...")
+            self.logger.info("[Step 2/3] Clicking on Raw Data Download...")
 
             if self.browser_wrapper.is_element_visible(raw_data_xpath, timeout=5000):
                 self.browser_wrapper.click_element(raw_data_xpath)
-                self.browser_wrapper.wait_for_page_load()
+                # Don't call wait_for_page_load() - this opens a modal, not a new page
                 time.sleep(3)
             else:
-                self.logger.error("Raw Data Download option not found")
+                self.logger.error("[Step 2/3 FAILED] Raw Data Download option not found")
                 self._reset_to_main_screen()
                 return None
 
-            self.logger.info("Navigation completed - ready for file download")
-            return {"section": "monthly_reports", "ready_for_download": True}
+            # 3. Verify the modal is open by checking for the modal element
+            modal_xpath = "//div[contains(@class, 'Modal') and contains(@class, 'is-active')]"
+            self.logger.info("[Step 3/3] Waiting for Raw Data Download modal to open...")
+
+            if self.browser_wrapper.is_element_visible(modal_xpath, timeout=10000):
+                self.logger.info("[Step 3/3 SUCCESS] Modal is open - ready for file download")
+                return {"section": "monthly_reports", "ready_for_download": True, "modal_open": True}
+            else:
+                self.logger.error("[Step 3/3 FAILED] Modal did not open after clicking Raw Data Download")
+                self._reset_to_main_screen()
+                return None
 
         except Exception as e:
             self.logger.error(f"Error navigating to monthly reports: {str(e)}")
@@ -129,62 +138,64 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         downloaded_files = []
 
         try:
-            self.logger.info("Downloading Raw Data ZIP...")
+            self.logger.info("=== Starting Raw Data ZIP download ===")
 
-            # 1. Click on dropdown to open it
-            dropdown_xpath = (
-                "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/main/div/div[2]/"
-                "div[2]/div/div/div[2]/div[4]/div[3]/div/app-reports-list/app-raw-data-download/"
-                "app-form-modal/div/div[2]/div[2]/div[2]/div/app-dropdown/div/div"
-            )
-            self.logger.info("Opening month dropdown...")
+            # 1. Click on dropdown to open it (inside the modal)
+            # Using a more robust selector that targets the dropdown inside the modal
+            dropdown_xpath = "//div[contains(@class, 'Modal') and contains(@class, 'is-active')]//app-dropdown//div[@role='combobox']"
+            self.logger.info("[RDD Step 1/4] Opening month dropdown...")
 
             if self.browser_wrapper.is_element_visible(dropdown_xpath, timeout=10000):
                 self.browser_wrapper.click_element(dropdown_xpath)
                 time.sleep(2)
             else:
-                self.logger.error("Month dropdown not found")
+                self.logger.error("[RDD Step 1/4 FAILED] Month dropdown not found in modal")
+                self._close_modal_if_open()
                 return downloaded_files
 
             # 2. Select month based on billing cycle end_date
             target_month_option = self._format_month_option(billing_cycle.end_date)
-            self.logger.info(f"Selecting month: {target_month_option}")
+            self.logger.info(f"[RDD Step 2/4] Selecting month: {target_month_option}")
 
             # Find and click option using XPath with contains
             option_xpath = f"//ul[@role='listbox']//li[@role='option' and contains(text(), '{target_month_option}')]"
             if self.browser_wrapper.is_element_visible(option_xpath, timeout=5000):
                 self.browser_wrapper.click_element(option_xpath)
-                self.logger.info(f"Selected: {target_month_option}")
+                self.logger.info(f"[RDD Step 2/4 SUCCESS] Selected: {target_month_option}")
                 time.sleep(1)
             else:
-                self.logger.error(f"Could not select month: {target_month_option}")
+                self.logger.error(f"[RDD Step 2/4 FAILED] Could not find month option: {target_month_option}")
+                self._close_modal_if_open()
                 return downloaded_files
 
-            # 3. Click download button
-            download_button_xpath = (
-                "/html/body/app-root/app-secure-layout/div/main/div/app-reports-landing/main/div/div[2]/"
-                "div[2]/div/div/div[2]/div[4]/div[3]/div/app-reports-list/app-raw-data-download/"
-                "app-form-modal/div/div[2]/div[2]/div[5]/button"
-            )
-            self.logger.info("Clicking Download button...")
+            # 3. Click download button inside the modal
+            # Using a more robust selector that targets the Download button inside the active modal
+            download_button_xpath = "//div[contains(@class, 'Modal') and contains(@class, 'is-active')]//button[contains(text(), 'Download')]"
+            self.logger.info("[RDD Step 3/4] Clicking Download button...")
 
             zip_file_path = self.browser_wrapper.expect_download_and_click(
                 download_button_xpath, timeout=120000, downloads_dir=self.job_downloads_dir
             )
 
             if not zip_file_path:
-                self.logger.error("Could not download ZIP")
+                self.logger.error("[RDD Step 3/4 FAILED] Could not download ZIP")
+                self._close_modal_if_open()
                 return downloaded_files
 
-            self.logger.info(f"ZIP downloaded: {os.path.basename(zip_file_path)}")
+            self.logger.info(f"[RDD Step 3/4 SUCCESS] ZIP downloaded: {os.path.basename(zip_file_path)}")
+
+            # Modal should close automatically after download starts, but just in case
+            time.sleep(2)
+            self._close_modal_if_open()
 
             # 4. Extract ZIP files
+            self.logger.info("[RDD Step 4/4] Extracting ZIP files...")
             extracted_files = self._extract_zip_files(zip_file_path)
             if not extracted_files:
-                self.logger.error("Could not extract files from ZIP")
+                self.logger.error("[RDD Step 4/4 FAILED] Could not extract files from ZIP")
                 return downloaded_files
 
-            self.logger.info(f"Extracted {len(extracted_files)} files from ZIP")
+            self.logger.info(f"[RDD Step 4/4 SUCCESS] Extracted {len(extracted_files)} files from ZIP")
 
             # 5. Process only relevant files (2 out of 4)
             for file_path in extracted_files:
@@ -212,6 +223,7 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
         except Exception as e:
             self.logger.error(f"Error downloading Raw Data ZIP: {str(e)}")
+            self._close_modal_if_open()
             return downloaded_files
 
     def _find_matching_zip_file(self, filename: str, file_map: dict) -> Optional[Any]:
@@ -674,10 +686,30 @@ class VerizonMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         except Exception as e:
             self.logger.error(f"Error navigating back: {str(e)}")
 
+    def _close_modal_if_open(self) -> bool:
+        """Closes any open modal if present. Returns True if a modal was closed."""
+        try:
+            modal_close_xpath = "//div[contains(@class, 'Modal') and contains(@class, 'is-active')]//button[contains(@class, 'Modal-close')]"
+
+            if self.browser_wrapper.is_element_visible(modal_close_xpath, timeout=2000):
+                self.logger.info("Modal detected - closing it...")
+                self.browser_wrapper.click_element(modal_close_xpath)
+                time.sleep(1)
+                self.logger.info("Modal closed")
+                return True
+            return False
+        except Exception as e:
+            self.logger.warning(f"Error closing modal: {str(e)}")
+            return False
+
     def _reset_to_main_screen(self):
         """Resets to Verizon main screen."""
         try:
             self.logger.info("Resetting to Verizon main screen...")
+
+            # First, close any open modal that might be blocking clicks
+            self._close_modal_if_open()
+
             home_xpath = '//*[@id="gNavHeader"]/div/div/div[1]/div[2]/header/div/div/div[1]/div/a'
 
             if self.browser_wrapper.is_element_visible(home_xpath, timeout=5000):

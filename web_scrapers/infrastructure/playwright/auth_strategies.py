@@ -1085,22 +1085,31 @@ class VerizonAuthStrategy(AuthBaseStrategy):
 
                 # Check if CAPTCHA still exists (failed first attempt)
                 if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
-                    self.logger.warning("CAPTCHA still present")
+                    self.logger.warning("CAPTCHA still present after first attempt")
 
                     # Second attempt: refill entire form
                     if not self._fill_login_form_and_submit(credentials):
                         return False
 
-                    if not self._solve_captcha_and_submit():
-                        self.logger.error("CAPTCHA failed on second attempt")
-                        return False
-
                     time.sleep(10)
 
-                    # If CAPTCHA still exists after second attempt, fail
-                    if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
-                        self.logger.error("CAPTCHA failed after two attempts")
-                        return False
+                    # Check if CAPTCHA is still visible BEFORE trying to solve it
+                    # If login succeeded without CAPTCHA, the page will have navigated to dashboard
+                    if not self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
+                        self.logger.info("CAPTCHA no longer visible after second login - login may have succeeded")
+                        # Continue to normal login success checking below
+                    else:
+                        self.logger.info("CAPTCHA still visible - attempting to solve...")
+                        if not self._solve_captcha_and_submit():
+                            self.logger.error("CAPTCHA failed on second attempt")
+                            return False
+
+                        time.sleep(10)
+
+                        # If CAPTCHA still exists after second attempt, fail
+                        if self.browser_wrapper.is_element_visible(captcha_img_xpath, timeout=3000):
+                            self.logger.error("CAPTCHA failed after two attempts")
+                            return False
 
             # Wait a bit for page to settle
             time.sleep(5)
@@ -1263,16 +1272,35 @@ class VerizonAuthStrategy(AuthBaseStrategy):
             return False
 
     def is_logged_in(self) -> bool:
-        """Check if logged in by looking for the Welcome label."""
+        """Check if logged in by looking for the Welcome label.
+
+        Note: Verizon site may show a login form briefly before redirecting to
+        dashboard if already logged in. We wait for the page to settle first.
+        """
         try:
+            # First, wait for page to settle - Verizon may redirect after initial load
+            self.logger.info("Checking Verizon login status (waiting for page to settle)...")
+            time.sleep(5)
+
+            # Check if we're on the login page (not logged in)
+            login_form_xpath = '//*[@id="ilogin_userid"]'
+            if self.browser_wrapper.is_element_visible(login_form_xpath, timeout=3000):
+                # Login form is visible - wait longer as it may redirect if session exists
+                self.logger.info("Login form detected - waiting 15 seconds for potential redirect...")
+                time.sleep(15)
+
+            # Now check for welcome label
             welcome_label_xpath = '//*[@id="searchContainer"]/div[2]/label'
             if self.browser_wrapper.is_element_visible(welcome_label_xpath, timeout=10000):
                 label_text = self.browser_wrapper.page.locator(welcome_label_xpath).text_content()
                 if label_text and "welcome" in label_text.lower():
                     self.logger.info(f"Welcome label found: {label_text.strip()}")
                     return True
+
+            self.logger.info("Welcome label not found - not logged in")
             return False
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"Error checking login status: {str(e)}")
             return False
 
     def get_login_url(self) -> str:
