@@ -41,12 +41,13 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             "report_names": ["All data export - usage details (GB usage)", "All data export - usage details"],
             "needs_date_filter": True,
         },
-        ATTFileSlug.MONTHLY_CHARGES.value: {
-            "tab": "charges_and_usage",
-            "section": "Bill summary",
-            "report_names": ["Monthly charges"],
-            "needs_date_filter": True,
-        },
+        # DESHABILITADO: Reporte monthly_charges no requerido actualmente
+        # ATTFileSlug.MONTHLY_CHARGES.value: {
+        #     "tab": "charges_and_usage",
+        #     "section": "Bill summary",
+        #     "report_names": ["Monthly charges"],
+        #     "needs_date_filter": True,
+        # },
         ATTFileSlug.DEVICE_INSTALLMENT.value: {
             "tab": "charges_and_usage",
             "section": "Equipment installment",
@@ -67,7 +68,7 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         self.report_dictionary = {
             ATTFileSlug.WIRELESS_CHARGES.value: None,
             ATTFileSlug.USAGE_DETAILS.value: None,
-            ATTFileSlug.MONTHLY_CHARGES.value: None,
+            # ATTFileSlug.MONTHLY_CHARGES.value: None,  # DESHABILITADO
             ATTFileSlug.DEVICE_INSTALLMENT.value: None,
             ATTFileSlug.UPGRADE_AND_INVENTORY.value: None,
             ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value: None,
@@ -162,17 +163,30 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _download_files(
         self, files_section: Any, config: ScraperConfig, billing_cycle: BillingCycle
     ) -> List[FileDownloadInfo]:
-        """Descarga los 6 archivos mensuales de AT&T."""
+        """Descarga los 5 archivos mensuales de AT&T."""
         downloaded_files = []
+
+        # Header del proceso de descarga
+        self.logger.info("#" * 80)
+        self.logger.info("# ATT MONTHLY REPORTS - STARTING DOWNLOAD PROCESS")
+        self.logger.info("#" * 80)
+        self.logger.info(f"Account Number: {billing_cycle.account.number}")
+        self.logger.info(f"Billing Period: {billing_cycle.start_date} to {billing_cycle.end_date}")
+        self.logger.info(f"Job Downloads Dir: {self.job_downloads_dir}")
 
         # Mapear BillingCycleFiles por slug del carrier_report para asociación exacta
         billing_cycle_file_map = {}
+        self.logger.info("-" * 40)
+        self.logger.info("BillingCycleFile Mappings:")
         if billing_cycle.billing_cycle_files:
             for bcf in billing_cycle.billing_cycle_files:
                 if bcf.carrier_report and bcf.carrier_report.slug:
                     slug = bcf.carrier_report.slug
                     billing_cycle_file_map[slug] = bcf
-                    self.logger.info(f"Mapping BillingCycleFile ID {bcf.id} -> Slug: '{slug}'")
+                    self.logger.info(f"  - Slug '{slug}' -> BillingCycleFile ID {bcf.id}")
+        else:
+            self.logger.warning("  No BillingCycleFiles provided!")
+        self.logger.info("-" * 40)
 
         try:
             # Orden de descarga: primero todos los de "Charges and usage", luego "Inventory"
@@ -180,7 +194,7 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value,
                 ATTFileSlug.WIRELESS_CHARGES.value,
                 ATTFileSlug.USAGE_DETAILS.value,
-                ATTFileSlug.MONTHLY_CHARGES.value,
+                # ATTFileSlug.MONTHLY_CHARGES.value,  # DESHABILITADO
                 ATTFileSlug.DEVICE_INSTALLMENT.value,
             ]
             inventory_reports = [ATTFileSlug.UPGRADE_AND_INVENTORY.value]
@@ -190,52 +204,96 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self._click_tab("Charges and usage")
             time.sleep(3)
 
-            # Verificar y configurar filtros (cuenta + fecha)
+            # CRÍTICO: El filtro de cuenta DEBE configurarse correctamente
+            # Si falla, no podemos continuar ya que descargaríamos archivos de otra cuenta
             if not self._ensure_filters_configured(billing_cycle, needs_date_filter=True):
-                self.logger.error("Failed to configure filters for Charges and usage tab, skipping this tab")
-                # No abortamos todo el scraper, continuamos con Inventory que no necesita fecha
-            else:
-                for slug in charges_reports:
-                    report_config = self.REPORT_CONFIG.get(slug)
-                    if report_config:
-                        file_info = self._download_single_report(
-                            slug, report_config, billing_cycle_file_map, billing_cycle
-                        )
-                        if file_info:
-                            downloaded_files.append(file_info)
+                error_msg = (
+                    f"FATAL: Failed to configure account filter for account {billing_cycle.account.number}. "
+                    "Cannot proceed with downloads as files may belong to wrong account."
+                )
+                self.logger.error(error_msg)
+                self._reset_to_main_screen()
+                raise RuntimeError(error_msg)
+
+            for slug in charges_reports:
+                report_config = self.REPORT_CONFIG.get(slug)
+                if report_config:
+                    file_info = self._download_single_report(
+                        slug, report_config, billing_cycle_file_map, billing_cycle
+                    )
+                    if file_info:
+                        downloaded_files.append(file_info)
 
             # 2. Procesar reportes de "Inventory"
             self.logger.info("Processing Inventory reports...")
             self._click_tab("Inventory")
             time.sleep(5)
 
-            # Verificar y configurar solo filtro de cuenta (no hay filtro de fecha en Inventory)
+            # CRÍTICO: El filtro de cuenta DEBE configurarse correctamente para Inventory también
             if not self._ensure_filters_configured(billing_cycle, needs_date_filter=False):
-                self.logger.error("Failed to configure account filter for Inventory tab, skipping this tab")
-                # Si falla el filtro de cuenta, no podemos descargar nada correcto de este tab
-            else:
-                for slug in inventory_reports:
-                    report_config = self.REPORT_CONFIG.get(slug)
-                    if report_config:
-                        file_info = self._download_single_report(
-                            slug, report_config, billing_cycle_file_map, billing_cycle
-                        )
-                        if file_info:
-                            downloaded_files.append(file_info)
+                error_msg = (
+                    f"FATAL: Failed to configure account filter for Inventory tab (account {billing_cycle.account.number}). "
+                    "Cannot proceed with Inventory downloads."
+                )
+                self.logger.error(error_msg)
+                self._reset_to_main_screen()
+                raise RuntimeError(error_msg)
+
+            for slug in inventory_reports:
+                report_config = self.REPORT_CONFIG.get(slug)
+                if report_config:
+                    file_info = self._download_single_report(
+                        slug, report_config, billing_cycle_file_map, billing_cycle
+                    )
+                    if file_info:
+                        downloaded_files.append(file_info)
 
             # 3. Reset a pantalla principal
             self._reset_to_main_screen()
 
-            self.logger.info(f"Download completed. Total files: {len(downloaded_files)}")
+            # Resumen final del proceso
+            self.logger.info("#" * 80)
+            self.logger.info("# ATT MONTHLY REPORTS - DOWNLOAD PROCESS COMPLETED")
+            self.logger.info("#" * 80)
+            self.logger.info(f"Total files downloaded: {len(downloaded_files)}/5")
+            self.logger.info("Downloaded files:")
+            for idx, file_info in enumerate(downloaded_files, 1):
+                self.logger.info(f"  {idx}. {file_info.file_name}")
+                self.logger.info(f"     -> BillingCycleFile ID: {file_info.billing_cycle_file.id if file_info.billing_cycle_file else 'N/A'}")
+
+            # Verificar si faltaron reportes
+            expected_slugs = {
+                ATTFileSlug.ALL_BILLING_CYCLE_CHARGES.value,
+                ATTFileSlug.WIRELESS_CHARGES.value,
+                ATTFileSlug.USAGE_DETAILS.value,
+                ATTFileSlug.DEVICE_INSTALLMENT.value,
+                ATTFileSlug.UPGRADE_AND_INVENTORY.value,
+            }
+            downloaded_slugs = set()
+            for file_info in downloaded_files:
+                if file_info.billing_cycle_file and file_info.billing_cycle_file.carrier_report:
+                    downloaded_slugs.add(file_info.billing_cycle_file.carrier_report.slug)
+
+            missing_slugs = expected_slugs - downloaded_slugs
+            if missing_slugs:
+                self.logger.warning(f"Missing reports: {missing_slugs}")
+            else:
+                self.logger.info("All expected reports downloaded successfully!")
+            self.logger.info("#" * 80)
+
             return downloaded_files
 
+        except RuntimeError:
+            # Re-lanzar errores críticos de filtro de cuenta sin capturarlos
+            raise
         except Exception as e:
-            self.logger.error(f"Error during file download: {str(e)}\n{traceback.format_exc()}")
+            self.logger.error(f"[EXCEPTION] Error during file download: {str(e)}")
+            self.logger.error(traceback.format_exc())
             try:
                 self._reset_to_main_screen()
             except:
                 pass
-            return downloaded_files
+            raise
 
     def _ensure_filters_configured(self, billing_cycle: BillingCycle, needs_date_filter: bool = True) -> bool:
         """Verifica que los filtros estén configurados correctamente, si no, los configura.
@@ -243,35 +301,41 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         Returns:
             True if filters are configured successfully, False otherwise.
         """
-        self.logger.info("Verifying filters configuration...")
+        self.logger.info("[FILTERS] Verifying filter configuration...")
+        self.logger.info(f"[FILTERS] Required account: {billing_cycle.account.number}")
+        if needs_date_filter:
+            self.logger.info(f"[FILTERS] Required date: {billing_cycle.end_date.strftime('%B %Y')}")
 
         # Verificar filtro de cuenta
         if not self._is_account_filter_configured(billing_cycle):
-            self.logger.info("Account filter not configured, configuring now...")
+            self.logger.info("[FILTERS] Account filter NOT configured, configuring now...")
             if not self._configure_account_filter(billing_cycle):
-                self.logger.error("Failed to configure account filter")
+                self.logger.error("[FILTERS] FAILED to configure account filter")
                 return False
             # Verify the filter was actually applied
             if not self._is_account_filter_configured(billing_cycle):
-                self.logger.error("Account filter configuration failed - filter not applied correctly")
+                self.logger.error("[FILTERS] Account filter configuration FAILED - filter not applied correctly after configuration")
                 return False
+            self.logger.info("[FILTERS] Account filter configured successfully")
         else:
-            self.logger.info("Account filter already configured correctly")
+            self.logger.info("[FILTERS] Account filter already configured correctly")
 
         # Verificar filtro de fecha (solo si es necesario)
         if needs_date_filter:
             if not self._is_date_filter_configured(billing_cycle):
-                self.logger.info("Date filter not configured, configuring now...")
+                self.logger.info("[FILTERS] Date filter NOT configured, configuring now...")
                 if not self._configure_date_range(billing_cycle):
-                    self.logger.error("Failed to configure date range filter")
+                    self.logger.error("[FILTERS] FAILED to configure date range filter")
                     return False
                 # Verify the filter was actually applied
                 if not self._is_date_filter_configured(billing_cycle):
-                    self.logger.error("Date range filter configuration failed - filter not applied correctly")
+                    self.logger.error("[FILTERS] Date range filter configuration FAILED - filter not applied correctly after configuration")
                     return False
+                self.logger.info("[FILTERS] Date filter configured successfully")
             else:
-                self.logger.info("Date filter already configured correctly")
+                self.logger.info("[FILTERS] Date filter already configured correctly")
 
+        self.logger.info("[FILTERS] All required filters verified OK")
         return True
 
     def _is_account_filter_configured(self, billing_cycle: BillingCycle) -> bool:
@@ -282,13 +346,17 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
                 current_text = self.browser_wrapper.get_text(view_by_xpath)
+                self.logger.info(f"[FILTERS] Current account filter value: '{current_text}'")
+                self.logger.info(f"[FILTERS] Expected account number: '{account_number}'")
                 if current_text and account_number in current_text:
-                    self.logger.debug(f"Account filter shows: '{current_text}'")
+                    self.logger.info(f"[FILTERS] Account filter MATCH: '{account_number}' found in '{current_text}'")
                     return True
+                else:
+                    self.logger.warning(f"[FILTERS] Account filter MISMATCH: '{account_number}' NOT in '{current_text}'")
 
             return False
         except Exception as e:
-            self.logger.debug(f"Error checking account filter: {str(e)}")
+            self.logger.error(f"[FILTERS] Error checking account filter: {str(e)}")
             return False
 
     def _is_date_filter_configured(self, billing_cycle: BillingCycle) -> bool:
@@ -303,13 +371,17 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             if self.browser_wrapper.is_element_visible(date_range_xpath, timeout=5000):
                 current_text = self.browser_wrapper.get_text(date_range_xpath)
+                self.logger.info(f"[FILTERS] Current date filter value: '{current_text}'")
+                self.logger.info(f"[FILTERS] Expected date: '{expected_text}'")
                 if current_text and expected_text in current_text:
-                    self.logger.debug(f"Date filter shows: '{current_text}'")
+                    self.logger.info(f"[FILTERS] Date filter MATCH: '{expected_text}' found in '{current_text}'")
                     return True
+                else:
+                    self.logger.warning(f"[FILTERS] Date filter MISMATCH: '{expected_text}' NOT in '{current_text}'")
 
             return False
         except Exception as e:
-            self.logger.debug(f"Error checking date filter: {str(e)}")
+            self.logger.error(f"[FILTERS] Error checking date filter: {str(e)}")
             return False
 
     def _click_tab(self, tab_name: str):
@@ -346,55 +418,69 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             section_name = report_config["section"]
             needs_date_filter = report_config.get("needs_date_filter", True)
 
-            self.logger.info(f"Processing report: {slug} (section: {section_name})")
+            # Header visual para identificar cada reporte en los logs
+            self.logger.info("=" * 70)
+            self.logger.info(f"DOWNLOADING REPORT: {slug}")
+            self.logger.info(f"  Section: {section_name}")
+            self.logger.info(f"  Expected names: {report_names}")
+            self.logger.info(f"  Account: {billing_cycle.account.number}")
+            self.logger.info(f"  Period: {billing_cycle.end_date.strftime('%Y-%m')}")
+            self.logger.info("=" * 70)
 
             # 1. Buscar y hacer click en el reporte dentro del accordion
+            self.logger.info("[Step 1/7] Searching for report button in accordion...")
             if not self._find_and_click_report(section_name, report_names):
-                self.logger.warning(f"Report not found for {slug}. Skipping...")
+                self.logger.error(f"[FAILED] Report button not found for '{slug}' in section '{section_name}'")
+                self.logger.error(f"[FAILED] Expected exact names: {report_names}")
                 return None
 
             # 2. Esperar 1 minuto después de entrar al reporte
-            self.logger.info("Waiting 60 seconds for report to load...")
+            self.logger.info("[Step 2/7] Waiting 60 seconds for report data to load...")
             time.sleep(60)
 
             # 3. Click en Export button
+            self.logger.info("[Step 3/7] Looking for Export button...")
             export_button_xpath = "//*[@id='export']"
             if not self.browser_wrapper.is_element_visible(export_button_xpath, timeout=10000):
-                self.logger.error(f"Export button not found for {slug}")
+                self.logger.error(f"[FAILED] Export button not found for '{slug}'")
                 self._go_back_to_reports()
-                # Verificar filtros después de regresar
                 self._ensure_filters_configured(billing_cycle, needs_date_filter=needs_date_filter)
                 return None
 
-            self.logger.info("Clicking Export button...")
+            self.logger.info("[Step 3/7] Clicking Export button...")
             self.browser_wrapper.click_element(export_button_xpath)
             time.sleep(2)
 
             # 4. Seleccionar CSV en el modal
+            self.logger.info("[Step 4/7] Selecting CSV format in export modal...")
             csv_option_xpath = "//*[@id='radCsvLabel']"
             if self.browser_wrapper.is_element_visible(csv_option_xpath, timeout=5000):
-                self.logger.info("Selecting CSV option...")
                 self.browser_wrapper.click_element(csv_option_xpath)
+                self.logger.info("[Step 4/7] CSV option selected")
                 time.sleep(1)
             else:
-                self.logger.warning("CSV option not found in modal")
-                # Intentar cerrar el modal si no encontramos la opción
+                self.logger.error(f"[FAILED] CSV option not found in export modal for '{slug}'")
                 self._close_export_modal_if_open()
                 self._go_back_to_reports()
                 self._ensure_filters_configured(billing_cycle, needs_date_filter=needs_date_filter)
                 return None
 
             # 5. Click en OK y esperar descarga
+            self.logger.info("[Step 5/7] Initiating download (timeout: 120s)...")
             ok_button_xpath = "//*[@id='hrefOK']"
-            self.logger.info("Clicking OK to download...")
 
             file_path = self.browser_wrapper.expect_download_and_click(
                 ok_button_xpath, timeout=120000, downloads_dir=self.job_downloads_dir
             )
 
             if file_path:
-                actual_filename = os.path.basename(file_path)
-                self.logger.info(f"File downloaded: {actual_filename}")
+                original_filename = os.path.basename(file_path)
+                self.logger.info(f"[Step 5/7] Download complete: {original_filename}")
+
+                # 6. Renombrar archivo para identificarlo por slug
+                self.logger.info("[Step 6/7] Renaming file with slug identifier...")
+                file_path, actual_filename = self._rename_file_with_slug(file_path, slug, billing_cycle)
+                self.logger.info(f"[Step 6/7] Renamed: {original_filename} -> {actual_filename}")
 
                 corresponding_bcf = billing_cycle_file_map.get(slug)
 
@@ -406,29 +492,35 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     billing_cycle_file=corresponding_bcf,
                 )
 
+                # Log de mapeo
                 if corresponding_bcf:
-                    self.logger.info(
-                        f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id} (Slug: '{slug}')"
-                    )
+                    self.logger.info(f"[Step 6/7] MAPPING: File '{actual_filename}' -> BillingCycleFile ID {corresponding_bcf.id}")
                 else:
-                    self.logger.warning(f"File downloaded without specific BillingCycleFile mapping")
+                    self.logger.warning(f"[Step 6/7] WARNING: No BillingCycleFile mapping found for slug '{slug}'")
 
-                # 6. Regresar a la sección de reportes
+                # 7. Regresar a la sección de reportes
+                self.logger.info("[Step 7/7] Returning to reports section...")
                 self._go_back_to_reports()
-
-                # 7. Verificar filtros después de regresar
                 self._ensure_filters_configured(billing_cycle, needs_date_filter=needs_date_filter)
+
+                # Resumen de éxito
+                self.logger.info("-" * 70)
+                self.logger.info(f"[SUCCESS] Report '{slug}' downloaded successfully")
+                self.logger.info(f"  File: {actual_filename}")
+                self.logger.info(f"  Path: {file_path}")
+                self.logger.info(f"  BillingCycleFile ID: {corresponding_bcf.id if corresponding_bcf else 'N/A'}")
+                self.logger.info("-" * 70)
 
                 return file_download_info
             else:
-                self.logger.error(f"Could not download file for {slug}")
+                self.logger.error(f"[FAILED] Download failed for '{slug}' - no file received")
                 self._go_back_to_reports()
-                # Verificar filtros después de regresar
                 self._ensure_filters_configured(billing_cycle, needs_date_filter=needs_date_filter)
                 return None
 
         except Exception as e:
-            self.logger.error(f"Error downloading report {slug}: {str(e)}\n{traceback.format_exc()}")
+            self.logger.error(f"[EXCEPTION] Error downloading report '{slug}': {str(e)}")
+            self.logger.error(traceback.format_exc())
             try:
                 self._go_back_to_reports()
                 self._ensure_filters_configured(
@@ -439,7 +531,10 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return None
 
     def _find_and_click_report(self, section_name: str, report_names: List[str]) -> bool:
-        """Busca y hace click en un reporte dentro del accordion."""
+        """Busca y hace click en un reporte dentro del accordion.
+
+        IMPORTANTE: Usa match EXACTO para evitar confusión entre reportes con nombres similares.
+        """
         try:
             accordion_xpath = "//*[@id='accordion']"
 
@@ -452,6 +547,11 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # Buscar todos los paneles del accordion
             panels = page.query_selector_all(f"xpath={accordion_xpath}//div[contains(@class, 'panel-reports')]")
+
+            # Normalizar nombres esperados para comparación exacta
+            normalized_report_names = [name.strip().lower() for name in report_names]
+
+            self.logger.info(f"Searching for report in section '{section_name}' with EXACT names: {report_names}")
 
             for panel in panels:
                 # Obtener el título del panel
@@ -466,21 +566,31 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                             # Buscar los reportes dentro de este panel
                             report_buttons = panel.query_selector_all("button[name='ViewReport']")
 
+                            # Log todos los reportes disponibles en esta sección para debug
+                            available_reports = []
+                            for btn in report_buttons:
+                                btn_text = btn.inner_text().strip()
+                                available_reports.append(btn_text)
+                            self.logger.info(f"Available reports in section: {available_reports}")
+
                             for button in report_buttons:
                                 button_text = button.inner_text().strip()
+                                normalized_button_text = button_text.lower()
 
-                                for report_name in report_names:
-                                    if report_name.lower() in button_text.lower():
-                                        self.logger.info(f"Found report: {button_text}")
-                                        button.click()
-                                        time.sleep(3)
-                                        return True
+                                # MATCH EXACTO: el texto del botón debe ser exactamente igual a uno de los nombres esperados
+                                if normalized_button_text in normalized_report_names:
+                                    self.logger.info(f"EXACT MATCH found: '{button_text}' matches expected name")
+                                    button.click()
+                                    time.sleep(3)
+                                    return True
+                                else:
+                                    self.logger.debug(f"No match: '{button_text}' != {report_names}")
 
                 except Exception as inner_e:
                     self.logger.debug(f"Error checking panel: {str(inner_e)}")
                     continue
 
-            self.logger.warning(f"Report not found in section '{section_name}' with names: {report_names}")
+            self.logger.warning(f"Report not found in section '{section_name}' with EXACT names: {report_names}")
             return False
 
         except Exception as e:
@@ -538,40 +648,62 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         """
         try:
             account_number = billing_cycle.account.number
-            self.logger.info(f"Configuring account filter for: {account_number}")
+            self.logger.info("[ACCOUNT CONFIG] Starting account filter configuration")
+            self.logger.info(f"[ACCOUNT CONFIG] Target account: {account_number}")
 
             # 1. Click en View by dropdown
             view_by_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[1]"
-            self.logger.info("Clicking View by dropdown...")
+            self.logger.info("[ACCOUNT CONFIG] Step 1/5: Clicking View by dropdown...")
             if not self.browser_wrapper.is_element_visible(view_by_xpath, timeout=5000):
-                self.logger.error("View by dropdown not found")
+                self.logger.error("[ACCOUNT CONFIG] FAILED: View by dropdown not found")
                 return False
             self.browser_wrapper.click_element(view_by_xpath)
             time.sleep(2)
 
             # 2. Seleccionar opción "Accounts"
             accounts_option_xpath = "//*[@id='LevelDataDropdownList_multipleaccounts']"
-            self.logger.info("Selecting Accounts option...")
+            self.logger.info("[ACCOUNT CONFIG] Step 2/5: Selecting 'Accounts' option...")
             if not self.browser_wrapper.is_element_visible(accounts_option_xpath, timeout=5000):
-                self.logger.error("Accounts option not found in dropdown")
+                self.logger.error("[ACCOUNT CONFIG] FAILED: 'Accounts' option not found in dropdown")
                 return False
             self.browser_wrapper.click_element(accounts_option_xpath)
             time.sleep(2)
 
             # 3. Escribir número de cuenta en el input
             account_input_xpath = "//*[@id='scopeExpandedAccountMenu']/div[1]/div/div[2]/input"
-            self.logger.info(f"Entering account number: {account_number}")
+            self.logger.info(f"[ACCOUNT CONFIG] Step 3/5: Entering account number: {account_number}")
             if not self.browser_wrapper.is_element_visible(account_input_xpath, timeout=5000):
-                self.logger.error("Account input field not found")
+                self.logger.error("[ACCOUNT CONFIG] FAILED: Account input field not found")
                 return False
             self.browser_wrapper.clear_and_type(account_input_xpath, account_number)
-            time.sleep(3)  # Esperar que se actualice el listado
+            self.logger.info("[ACCOUNT CONFIG] Waiting 3s for account list to update...")
+            time.sleep(3)
 
-            # 4. Seleccionar la primera opción del listado
+            # 4. Buscar y logear las opciones disponibles
+            self.logger.info("[ACCOUNT CONFIG] Step 4/5: Looking for account in results list...")
+            page = self.browser_wrapper.page
+            options_list_xpath = "//*[@id='scopeExpandedAccountMenu']/div[3]/ul/li"
+            options = page.query_selector_all(f"xpath={options_list_xpath}")
+
+            # Logear todas las opciones encontradas
+            available_accounts = []
+            for opt in options:
+                opt_text = opt.inner_text().strip() if opt else ""
+                available_accounts.append(opt_text)
+            self.logger.info(f"[ACCOUNT CONFIG] Available accounts in list ({len(available_accounts)}): {available_accounts}")
+
             first_option_xpath = "//*[@id='scopeExpandedAccountMenu']/div[3]/ul/li[1]"
             if self.browser_wrapper.is_element_visible(first_option_xpath, timeout=5000):
-                self.logger.info("Selecting first account option...")
-                # Click en el checkbox dentro del li
+                first_option_text = self.browser_wrapper.get_text(first_option_xpath)
+                self.logger.info(f"[ACCOUNT CONFIG] First option text: '{first_option_text}'")
+
+                # Verificar que la primera opción contiene el número de cuenta esperado
+                if account_number not in (first_option_text or ""):
+                    self.logger.error(f"[ACCOUNT CONFIG] FAILED: First option '{first_option_text}' does not contain expected account '{account_number}'")
+                    self.logger.error(f"[ACCOUNT CONFIG] Available options were: {available_accounts}")
+                    return False
+
+                self.logger.info("[ACCOUNT CONFIG] Selecting first account option...")
                 checkbox_xpath = f"{first_option_xpath}/input"
                 if self.browser_wrapper.is_element_visible(checkbox_xpath, timeout=2000):
                     self.browser_wrapper.click_element(checkbox_xpath)
@@ -579,23 +711,26 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     self.browser_wrapper.click_element(first_option_xpath)
                 time.sleep(1)
             else:
-                self.logger.error(f"Account option not found in list for account: {account_number}")
+                self.logger.error(f"[ACCOUNT CONFIG] FAILED: No account options found in list for account: {account_number}")
+                self.logger.error(f"[ACCOUNT CONFIG] Available options were: {available_accounts}")
                 return False
 
             # 5. Click en OK button
             ok_button_xpath = "//*[@id='scopeExpandedAccountMenu']/div[4]/button"
-            self.logger.info("Clicking OK button...")
+            self.logger.info("[ACCOUNT CONFIG] Step 5/5: Clicking OK button to apply...")
             if not self.browser_wrapper.is_element_visible(ok_button_xpath, timeout=5000):
-                self.logger.error("OK button not found")
+                self.logger.error("[ACCOUNT CONFIG] FAILED: OK button not found")
                 return False
             self.browser_wrapper.click_element(ok_button_xpath)
+            self.logger.info("[ACCOUNT CONFIG] Waiting 3s for filter to apply...")
             time.sleep(3)
 
-            self.logger.info("Account filter configured successfully")
+            self.logger.info(f"[ACCOUNT CONFIG] SUCCESS: Account filter configured for {account_number}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configuring account filter: {str(e)}\n{traceback.format_exc()}")
+            self.logger.error(f"[ACCOUNT CONFIG] EXCEPTION: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return False
 
     def _configure_date_range(self, billing_cycle: BillingCycle) -> bool:
@@ -610,66 +745,74 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             year = end_date.year
             target_option = f"{month_name} {year}"
 
-            self.logger.info(f"Configuring date range for: {target_option}")
+            self.logger.info("[DATE CONFIG] Starting date range configuration")
+            self.logger.info(f"[DATE CONFIG] Target date: {target_option}")
 
             # 1. Click en Date range dropdown
             date_range_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[2]"
-            self.logger.info("Clicking Date range dropdown...")
+            self.logger.info("[DATE CONFIG] Step 1/4: Clicking Date range dropdown...")
             if not self.browser_wrapper.is_element_visible(date_range_xpath, timeout=5000):
-                self.logger.error("Date range dropdown not found")
+                self.logger.error("[DATE CONFIG] FAILED: Date range dropdown not found")
                 return False
             self.browser_wrapper.click_element(date_range_xpath)
             time.sleep(2)
 
             # 2. Seleccionar "Billed date" si no está seleccionado
             billed_date_xpath = "//*[@id='CIDPendingDataDropdownList_billed']"
+            self.logger.info("[DATE CONFIG] Step 2/4: Selecting 'Billed date' option...")
             if self.browser_wrapper.is_element_visible(billed_date_xpath, timeout=5000):
-                self.logger.info("Selecting Billed date option...")
                 self.browser_wrapper.click_element(billed_date_xpath)
                 time.sleep(2)
+            else:
+                self.logger.info("[DATE CONFIG] 'Billed date' option not visible, may already be selected")
 
             # 3. Seleccionar el mes/año correcto del select
-            # El select tiene opciones con formato "November 2025 bills" o "November 2025"
+            self.logger.info("[DATE CONFIG] Step 3/4: Selecting billing period from dropdown...")
             select_xpath = "//*[@id='CIDPending']"
             option_text_bills = f"{month_name} {year} bills"
             option_text_simple = f"{month_name} {year}"
 
-            self.logger.info(f"Searching for date option: '{option_text_bills}' or '{option_text_simple}'")
+            self.logger.info(f"[DATE CONFIG] Looking for: '{option_text_bills}' or '{option_text_simple}'")
 
             # Intentar seleccionar con "bills" primero, luego sin
             date_selected = False
             try:
                 self.browser_wrapper.select_dropdown_option(select_xpath, option_text_bills)
-                self.logger.info(f"Selected: {option_text_bills}")
+                self.logger.info(f"[DATE CONFIG] Selected: '{option_text_bills}'")
                 date_selected = True
-            except Exception:
+            except Exception as e1:
+                self.logger.info(f"[DATE CONFIG] '{option_text_bills}' not found, trying '{option_text_simple}'...")
                 try:
                     self.browser_wrapper.select_dropdown_option(select_xpath, option_text_simple)
-                    self.logger.info(f"Selected: {option_text_simple}")
+                    self.logger.info(f"[DATE CONFIG] Selected: '{option_text_simple}'")
                     date_selected = True
-                except Exception as e:
-                    self.logger.error(f"Could not select date option '{target_option}': {str(e)}")
+                except Exception as e2:
+                    self.logger.error(f"[DATE CONFIG] FAILED: Could not select date option")
+                    self.logger.error(f"[DATE CONFIG] Tried: '{option_text_bills}' -> {str(e1)}")
+                    self.logger.error(f"[DATE CONFIG] Tried: '{option_text_simple}' -> {str(e2)}")
                     return False
 
             if not date_selected:
-                self.logger.error(f"Failed to select date option for {target_option}")
+                self.logger.error(f"[DATE CONFIG] FAILED: Could not select date for {target_option}")
                 return False
 
             # 4. Click en Apply button para aplicar los cambios
             apply_button_xpath = "//*[@id='btnApply']"
+            self.logger.info("[DATE CONFIG] Step 4/4: Clicking Apply button...")
             if self.browser_wrapper.is_element_visible(apply_button_xpath, timeout=5000):
-                self.logger.info("Clicking Apply button...")
                 self.browser_wrapper.click_element(apply_button_xpath)
-                time.sleep(5)  # Esperar que se apliquen los cambios
+                self.logger.info("[DATE CONFIG] Waiting 5s for changes to apply...")
+                time.sleep(5)
             else:
-                self.logger.error("Apply button not found")
+                self.logger.error("[DATE CONFIG] FAILED: Apply button not found")
                 return False
 
-            self.logger.info("Date range configured successfully")
+            self.logger.info(f"[DATE CONFIG] SUCCESS: Date range configured for {target_option}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error configuring date range: {str(e)}\n{traceback.format_exc()}")
+            self.logger.error(f"[DATE CONFIG] EXCEPTION: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return False
 
     def _reset_to_main_screen(self):
@@ -681,6 +824,51 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info("Reset to AT&T completed")
         except Exception as e:
             self.logger.error(f"Error in AT&T reset: {str(e)}\n{traceback.format_exc()}")
+
+    def _rename_file_with_slug(
+        self, file_path: str, slug: str, billing_cycle: BillingCycle
+    ) -> tuple[str, str]:
+        """Renombra el archivo descargado para incluir el slug y periodo de facturación.
+
+        Args:
+            file_path: Ruta original del archivo descargado.
+            slug: Identificador del tipo de reporte (ej: 'wireless_charges').
+            billing_cycle: Ciclo de facturación para obtener el periodo.
+
+        Returns:
+            Tuple con (nueva_ruta, nuevo_nombre).
+        """
+        try:
+            original_filename = os.path.basename(file_path)
+            file_dir = os.path.dirname(file_path)
+
+            # Obtener extensión del archivo original
+            _, extension = os.path.splitext(original_filename)
+
+            # Crear nombre descriptivo: ATT_{slug}_{YYYY-MM}.csv
+            end_date = billing_cycle.end_date
+            period = f"{end_date.year}-{end_date.month:02d}"
+            new_filename = f"ATT_{slug}_{period}{extension}"
+
+            new_file_path = os.path.join(file_dir, new_filename)
+
+            # Si ya existe un archivo con ese nombre, agregar contador
+            counter = 1
+            while os.path.exists(new_file_path):
+                new_filename = f"ATT_{slug}_{period}_{counter}{extension}"
+                new_file_path = os.path.join(file_dir, new_filename)
+                counter += 1
+
+            # Renombrar el archivo
+            os.rename(file_path, new_file_path)
+            self.logger.info(f"Renamed: {original_filename} -> {new_filename}")
+
+            return new_file_path, new_filename
+
+        except Exception as e:
+            self.logger.error(f"Error renaming file: {str(e)}\n{traceback.format_exc()}")
+            # Si falla el renombrado, retornar los valores originales
+            return file_path, os.path.basename(file_path)
 
 
 # =============================================================================

@@ -35,116 +35,186 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _find_files_section(self, config: ScraperConfig, billing_cycle: BillingCycle) -> Optional[Any]:
         """Navega a la seccion de Billing templates y configura los filtros."""
         try:
-            self.logger.info("Navegando a reportes mensuales de T-Mobile...")
+            self.logger.info("=" * 70)
+            self.logger.info("T-MOBILE MONTHLY REPORTS - NAVEGACION A SECCION DE ARCHIVOS")
+            self.logger.info("=" * 70)
+            self.logger.info(f"Account: {billing_cycle.account.number if billing_cycle.account else 'N/A'}")
+            self.logger.info(f"Billing Period: {billing_cycle.end_date.strftime('%B %Y')}")
+            self.logger.info(f"Current URL: {self.browser_wrapper.page.url}")
+            self.logger.info("-" * 70)
 
             # Step 1: Navigate to Reporting section
+            self.logger.info("[Step 1/4] Navegando a seccion Reporting...")
             if not self._navigate_to_reporting():
-                self.logger.error("No se pudo navegar a la seccion Reporting")
-                return None
+                error_msg = (
+                    "FAILED at Step 1: No se pudo navegar a la seccion Reporting. "
+                    "Posibles causas: Panel 'Reporting' no visible, menu lateral no cargado, "
+                    "o submenu 'My Reports' no encontrado."
+                )
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            self.logger.info("[Step 1/4] OK - Navegacion a Reporting completada")
 
             # Step 2: Click on Billing templates tab
+            self.logger.info("[Step 2/4] Buscando tab 'Billing templates'...")
             if not self._click_billing_templates_tab():
-                self.logger.error("No se pudo hacer click en Billing templates")
-                return None
+                error_msg = (
+                    "FAILED at Step 2: No se pudo hacer click en tab 'Billing templates'. "
+                    "Posibles causas: Tab header no visible, tab 'Billing templates' no existe, "
+                    "o la pagina no cargo correctamente."
+                )
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            self.logger.info("[Step 2/4] OK - Tab 'Billing templates' seleccionado")
 
             # Step 3: Select billing period based on billing_cycle.end_date
+            expected_period = billing_cycle.end_date.strftime("%B %Y")
+            self.logger.info(f"[Step 3/4] Seleccionando billing period: {expected_period}...")
             if not self._select_billing_period(billing_cycle):
-                self.logger.error("No se pudo seleccionar el billing period")
-                return None
+                error_msg = (
+                    f"FAILED at Step 3: No se pudo seleccionar billing period '{expected_period}'. "
+                    "Posibles causas: Dropdown de billing period no visible, "
+                    f"opcion '{expected_period}' no existe en el dropdown, o periodo fuera de rango."
+                )
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            self.logger.info(f"[Step 3/4] OK - Billing period '{expected_period}' seleccionado")
 
             # Step 4: Select account in Hierarchy Level
             account_number = billing_cycle.account.number if billing_cycle.account else None
             if not account_number:
-                self.logger.error("No se encontro el numero de cuenta en billing_cycle")
-                return None
+                error_msg = "FAILED at Step 4: No se encontro numero de cuenta en billing_cycle.account"
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
+            self.logger.info(f"[Step 4/4] Seleccionando cuenta {account_number} en Hierarchy Level...")
             if not self._select_hierarchy_level(account_number):
-                self.logger.error(f"No se pudo seleccionar la cuenta {account_number}")
-                return None
+                error_msg = (
+                    f"FAILED at Step 4: No se pudo seleccionar cuenta '{account_number}' en Hierarchy Level. "
+                    "Posibles causas: Dropdown de Hierarchy Level no visible, "
+                    f"cuenta '{account_number}' no existe en el arbol, o arbol no se expandio correctamente."
+                )
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            self.logger.info(f"[Step 4/4] OK - Cuenta '{account_number}' seleccionada")
 
-            self.logger.info("Seccion de reportes mensuales configurada correctamente")
+            self.logger.info("-" * 70)
+            self.logger.info("SUCCESS: Seccion de reportes mensuales configurada correctamente")
+            self.logger.info("=" * 70)
             return {"section": "billing_templates", "account": account_number}
 
+        except RuntimeError:
+            # Re-raise para que el mensaje descriptivo llegue al job
+            raise
         except Exception as e:
-            self.logger.error(f"Error navegando a reportes mensuales: {str(e)}")
-            return None
+            error_msg = f"EXCEPTION en _find_files_section: {str(e)}"
+            self.logger.error(error_msg)
+            import traceback
+            self.logger.error(traceback.format_exc())
+            raise RuntimeError(error_msg)
 
     def _navigate_to_reporting(self) -> bool:
         """Navigate to the Reporting section in the sidebar menu."""
         try:
-            self.logger.info("Buscando seccion Reporting en el menu lateral...")
+            self.logger.info("[NAV] Buscando seccion Reporting en el menu lateral...")
+            self.logger.info(f"[NAV] Current URL: {self.browser_wrapper.page.url}")
 
             # First, look for the Reporting expansion panel and click it
             reporting_panel_xpath = '//*[@id="mat-expansion-panel-header-3"]'
             reporting_by_text_xpath = "//mat-expansion-panel-header//span[contains(text(), 'Reporting')]"
 
+            self.logger.info(f"[NAV] Buscando panel Reporting por ID: {reporting_panel_xpath}")
             # Try with ID first
             if self.browser_wrapper.is_element_visible(reporting_panel_xpath, timeout=5000):
-                self.logger.info("Click en Reporting panel...")
+                self.logger.info("[NAV] Panel Reporting encontrado por ID, haciendo click...")
                 self.browser_wrapper.click_element(reporting_panel_xpath)
                 time.sleep(2)
-            elif self.browser_wrapper.is_element_visible(reporting_by_text_xpath, timeout=5000):
-                self.logger.info("Click en Reporting (por texto)...")
-                self.browser_wrapper.click_element(reporting_by_text_xpath)
-                time.sleep(2)
             else:
-                self.logger.error("No se encontro el panel de Reporting")
-                return False
+                self.logger.info(f"[NAV] ID no encontrado, buscando por texto: {reporting_by_text_xpath}")
+                if self.browser_wrapper.is_element_visible(reporting_by_text_xpath, timeout=5000):
+                    self.logger.info("[NAV] Panel Reporting encontrado por texto, haciendo click...")
+                    self.browser_wrapper.click_element(reporting_by_text_xpath)
+                    time.sleep(2)
+                else:
+                    self.logger.error("[NAV] FAILED: No se encontro el panel de Reporting")
+                    self.logger.error(f"[NAV] Intentados: ID='{reporting_panel_xpath}', Text='{reporting_by_text_xpath}'")
+                    return False
 
             # Now click on "My Reports" submenu item
             my_reports_xpath = "//mat-list-item[contains(@aria-label, 'My Reports')]"
             my_reports_text_xpath = "//mat-list-item//span[contains(text(), 'My Reports')]"
 
+            self.logger.info("[NAV] Esperando expansion del panel (2s)...")
             time.sleep(2)  # Wait for expansion animation
 
+            self.logger.info(f"[NAV] Buscando submenu 'My Reports'...")
             if self.browser_wrapper.is_element_visible(my_reports_xpath, timeout=5000):
-                self.logger.info("Click en My Reports...")
+                self.logger.info("[NAV] 'My Reports' encontrado por aria-label, haciendo click...")
                 self.browser_wrapper.click_element(my_reports_xpath)
             elif self.browser_wrapper.is_element_visible(my_reports_text_xpath, timeout=5000):
-                self.logger.info("Click en My Reports (por texto)...")
+                self.logger.info("[NAV] 'My Reports' encontrado por texto, haciendo click...")
                 self.browser_wrapper.click_element(my_reports_text_xpath)
             else:
-                self.logger.error("No se encontro My Reports")
+                self.logger.error("[NAV] FAILED: No se encontro submenu 'My Reports'")
+                self.logger.error(f"[NAV] Intentados: aria-label='{my_reports_xpath}', Text='{my_reports_text_xpath}'")
                 return False
 
+            self.logger.info("[NAV] Esperando carga de pagina My Reports (5s)...")
             time.sleep(5)
 
-            self.logger.info("Navegacion a Reporting completada")
+            self.logger.info(f"[NAV] Navegacion completada. URL actual: {self.browser_wrapper.page.url}")
             return True
 
         except Exception as e:
-            self.logger.error(f"Error navegando a Reporting: {str(e)}")
+            self.logger.error(f"[NAV] EXCEPTION: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
 
     def _click_billing_templates_tab(self) -> bool:
         """Click on the Billing templates tab."""
         try:
-            self.logger.info("Buscando tab Billing templates...")
+            self.logger.info("[TAB] Buscando tab 'Billing templates'...")
 
             # Wait for tab header to be visible
             tab_header_xpath = (
                 '//*[@id="tfb-reporting-container"]/div/div/app-my-reports/div/div[1]/div/mat-tab-group/mat-tab-header'
             )
 
+            self.logger.info(f"[TAB] Verificando presencia de tab header: {tab_header_xpath}")
             if not self.browser_wrapper.is_element_visible(tab_header_xpath, timeout=10000):
-                self.logger.error("Tab header no encontrado")
+                self.logger.error("[TAB] FAILED: Tab header container no encontrado")
+                self.logger.error(f"[TAB] Xpath intentado: {tab_header_xpath}")
+                self.logger.error("[TAB] Posible causa: La pagina 'My Reports' no cargo correctamente")
                 return False
+
+            self.logger.info("[TAB] Tab header encontrado, buscando tab 'Billing templates'...")
 
             # Find and click the "Billing templates" tab
             billing_templates_tab_xpath = "//div[@role='tab']//span[contains(text(), 'Billing templates')]"
 
             if self.browser_wrapper.is_element_visible(billing_templates_tab_xpath, timeout=5000):
-                self.logger.info("Click en Billing templates tab...")
+                self.logger.info("[TAB] Tab 'Billing templates' encontrado, haciendo click...")
                 self.browser_wrapper.click_element(billing_templates_tab_xpath)
                 time.sleep(3)
-                self.logger.info("Tab Billing templates seleccionado")
+                self.logger.info("[TAB] Tab 'Billing templates' seleccionado exitosamente")
                 return True
             else:
-                self.logger.error("Tab Billing templates no encontrado")
+                self.logger.error("[TAB] FAILED: Tab 'Billing templates' no encontrado")
+                self.logger.error(f"[TAB] Xpath intentado: {billing_templates_tab_xpath}")
+                # Intentar obtener los tabs disponibles para debug
+                try:
+                    tabs = self.browser_wrapper.page.query_selector_all("div[role='tab']")
+                    available_tabs = [tab.inner_text().strip() for tab in tabs]
+                    self.logger.error(f"[TAB] Tabs disponibles: {available_tabs}")
+                except:
+                    pass
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error clicking Billing templates tab: {str(e)}")
+            self.logger.error(f"[TAB] EXCEPTION: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
 
     def _select_billing_period(self, billing_cycle: BillingCycle) -> bool:
@@ -156,81 +226,108 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             year = end_date.strftime("%Y")
             expected_period = f"{month_name} {year}"
 
-            self.logger.info(f"Buscando billing period: {expected_period}")
+            self.logger.info(f"[PERIOD] Buscando billing period: {expected_period}")
 
             # Click on the billing period dropdown to open it
             billing_period_dropdown_xpath = '//*[@id="mat-select-0"]'
             billing_period_by_placeholder_xpath = "//mat-select[@placeholder='Select billing period']"
 
+            self.logger.info(f"[PERIOD] Buscando dropdown por ID: {billing_period_dropdown_xpath}")
             if self.browser_wrapper.is_element_visible(billing_period_dropdown_xpath, timeout=5000):
-                self.logger.info("Click en dropdown billing period...")
+                self.logger.info("[PERIOD] Dropdown encontrado por ID, haciendo click...")
                 self.browser_wrapper.click_element(billing_period_dropdown_xpath)
-            elif self.browser_wrapper.is_element_visible(billing_period_by_placeholder_xpath, timeout=5000):
-                self.logger.info("Click en dropdown billing period (por placeholder)...")
-                self.browser_wrapper.click_element(billing_period_by_placeholder_xpath)
             else:
-                self.logger.error("Dropdown de billing period no encontrado")
-                return False
+                self.logger.info(f"[PERIOD] ID no encontrado, buscando por placeholder: {billing_period_by_placeholder_xpath}")
+                if self.browser_wrapper.is_element_visible(billing_period_by_placeholder_xpath, timeout=5000):
+                    self.logger.info("[PERIOD] Dropdown encontrado por placeholder, haciendo click...")
+                    self.browser_wrapper.click_element(billing_period_by_placeholder_xpath)
+                else:
+                    self.logger.error("[PERIOD] FAILED: Dropdown de billing period no encontrado")
+                    self.logger.error(f"[PERIOD] Intentados: ID='{billing_period_dropdown_xpath}', Placeholder='{billing_period_by_placeholder_xpath}'")
+                    return False
 
+            self.logger.info("[PERIOD] Esperando apertura del dropdown (2s)...")
             time.sleep(2)
 
             # Search for the option with the expected period text
             option_xpath = f"//mat-option//span[contains(text(), '{expected_period}')]"
 
+            self.logger.info(f"[PERIOD] Buscando opcion: {expected_period}")
             if self.browser_wrapper.is_element_visible(option_xpath, timeout=5000):
-                self.logger.info(f"Seleccionando: {expected_period}")
+                self.logger.info(f"[PERIOD] Opcion '{expected_period}' encontrada, seleccionando...")
                 self.browser_wrapper.click_element(option_xpath)
                 time.sleep(2)
-                self.logger.info(f"Billing period {expected_period} seleccionado")
+                self.logger.info(f"[PERIOD] Billing period '{expected_period}' seleccionado exitosamente")
                 return True
             else:
-                self.logger.error(f"Opcion '{expected_period}' no encontrada en el dropdown")
+                self.logger.error(f"[PERIOD] FAILED: Opcion '{expected_period}' no encontrada en el dropdown")
+                # Intentar obtener las opciones disponibles para debug
+                try:
+                    options = self.browser_wrapper.page.query_selector_all("mat-option")
+                    available_options = [opt.inner_text().strip() for opt in options]
+                    self.logger.error(f"[PERIOD] Opciones disponibles: {available_options}")
+                except:
+                    pass
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error selecting billing period: {str(e)}")
+            self.logger.error(f"[PERIOD] EXCEPTION: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
 
     def _select_hierarchy_level(self, account_number: str) -> bool:
         """Navigate the Hierarchy Level tree to find and select the account number."""
         try:
-            self.logger.info(f"Buscando cuenta {account_number} en Hierarchy Level...")
+            self.logger.info(f"[HIERARCHY] Buscando cuenta {account_number} en Hierarchy Level...")
 
             # Click on the Hierarchy Level dropdown to open it
             hierarchy_dropdown_xpath = "//mat-select[@name='hierarchyLevel']"
             hierarchy_container_xpath = "//div[contains(@class, 'hierarchy-level-dd')]//mat-select"
 
+            self.logger.info(f"[HIERARCHY] Buscando dropdown por name: {hierarchy_dropdown_xpath}")
             if self.browser_wrapper.is_element_visible(hierarchy_dropdown_xpath, timeout=5000):
-                self.logger.info("Click en dropdown Hierarchy Level...")
+                self.logger.info("[HIERARCHY] Dropdown encontrado por name, haciendo click...")
                 self.browser_wrapper.click_element(hierarchy_dropdown_xpath)
-            elif self.browser_wrapper.is_element_visible(hierarchy_container_xpath, timeout=5000):
-                self.logger.info("Click en dropdown Hierarchy Level (container)...")
-                self.browser_wrapper.click_element(hierarchy_container_xpath)
             else:
-                self.logger.error("Dropdown de Hierarchy Level no encontrado")
-                return False
+                self.logger.info(f"[HIERARCHY] name no encontrado, buscando por container: {hierarchy_container_xpath}")
+                if self.browser_wrapper.is_element_visible(hierarchy_container_xpath, timeout=5000):
+                    self.logger.info("[HIERARCHY] Dropdown encontrado por container, haciendo click...")
+                    self.browser_wrapper.click_element(hierarchy_container_xpath)
+                else:
+                    self.logger.error("[HIERARCHY] FAILED: Dropdown de Hierarchy Level no encontrado")
+                    self.logger.error(f"[HIERARCHY] Intentados: name='{hierarchy_dropdown_xpath}', container='{hierarchy_container_xpath}'")
+                    return False
 
+            self.logger.info("[HIERARCHY] Esperando apertura del panel (2s)...")
             time.sleep(2)
 
             # Wait for the tree panel to appear
             tree_panel_xpath = "//div[contains(@id, 'mat-select') and contains(@id, '-panel')]//mat-tree"
 
+            self.logger.info(f"[HIERARCHY] Verificando que el arbol se abrio: {tree_panel_xpath}")
             if not self.browser_wrapper.is_element_visible(tree_panel_xpath, timeout=5000):
-                self.logger.error("Panel del arbol de hierarchy no se abrio")
+                self.logger.error("[HIERARCHY] FAILED: Panel del arbol de hierarchy no se abrio")
+                self.logger.error(f"[HIERARCHY] Xpath intentado: {tree_panel_xpath}")
                 return False
+
+            self.logger.info("[HIERARCHY] Panel del arbol visible, buscando cuenta...")
 
             # Now we need to expand nodes until we find the account number
             found = self._find_and_select_account_in_tree(account_number)
 
             if found:
-                self.logger.info(f"Cuenta {account_number} seleccionada correctamente")
+                self.logger.info(f"[HIERARCHY] Cuenta {account_number} seleccionada correctamente")
                 return True
             else:
-                self.logger.error(f"No se encontro la cuenta {account_number} en el arbol")
+                self.logger.error(f"[HIERARCHY] FAILED: No se encontro la cuenta {account_number} en el arbol")
+                self.logger.error("[HIERARCHY] La cuenta puede no existir o el arbol no se expandio correctamente")
                 return False
 
         except Exception as e:
-            self.logger.error(f"Error selecting hierarchy level: {str(e)}")
+            self.logger.error(f"[HIERARCHY] EXCEPTION: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
 
     def _find_and_select_account_in_tree(self, account_number: str, max_depth: int = 5) -> bool:
