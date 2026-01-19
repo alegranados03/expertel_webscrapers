@@ -102,11 +102,11 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             else:
                 self.logger.info("Could not download ZIP for target month")
 
-            # === PART 2: DOWNLOAD MOBILITY DEVICE SUMMARY FROM SUMMARY REPORTS ===
+            # === PART 2: DOWNLOAD MOBILITY DEVICE SUMMARY FROM DETAIL REPORTS ===
             # ZIP files (group_summary, individual_detail) were obtained in Part 1.
-            # Here we download mobility_device from Summary Reports in Telus IQ.
+            # Here we download mobility_device from Detail Reports in Telus IQ.
 
-            self.logger.info("=== PART 2: DOWNLOADING MOBILITY DEVICE FROM SUMMARY REPORTS ===")
+            self.logger.info("=== PART 2: DOWNLOADING MOBILITY DEVICE FROM DETAIL REPORTS ===")
 
             # 1. Navigate to billing header (Telus IQ)
             billing_header_xpath = '//*[@id="navOpen"]/li[2]/a'
@@ -124,10 +124,10 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.browser_wrapper.click_element(reports_header_xpath)
             time.sleep(2)
 
-            # 3. Click on summary reports (NOT detail reports)
-            summary_reports_xpath = '//*[@id="navMenuItem5"]'
-            self.logger.info("Clicking on summary reports...")
-            self.browser_wrapper.click_element(summary_reports_xpath)
+            # 3. Click on Detail Reports
+            detail_reports_xpath = '//*[@id="navMenuItem6"]'
+            self.logger.info("Clicking on Detail Reports...")
+            self.browser_wrapper.click_element(detail_reports_xpath)
             self.browser_wrapper.wait_for_page_load()
             self.logger.info("Waiting 30 seconds...")
             time.sleep(30)
@@ -261,15 +261,11 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return True
 
     def _click_month_and_download_zip(self, target_month: str, target_year: int) -> Optional[str]:
-        """
-        Searches for target month and downloads ZIP by clicking on month.
-        Click on month directly downloads ZIP file.
-        Returns downloaded file path or None if fails.
-        """
+        """Searches for target month within year section and downloads ZIP."""
         try:
             self.logger.info(f"Download directory configured: {self.job_downloads_dir}")
 
-            # Search for target year first
+            # Find the year header
             year_xpath = f"//h2[contains(text(), '{target_year}')]"
             if not self.browser_wrapper.find_element_by_xpath(year_xpath):
                 self.logger.error(f"Year {target_year} not found")
@@ -277,21 +273,27 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             self.logger.info(f"Found year {target_year}")
 
-            # Search for target month link
-            month_link_xpath = f"//div[contains(@class, 'css-146c3p1') and contains(text(), '{target_month}')]"
+            # Find month whose closest preceding h2 is the target year
+            month_in_year_xpath = (
+                f"//div[@role='link'][.//div[contains(text(), '{target_month}')]]"
+                f"[preceding::h2[1][contains(text(), '{target_year}')]]"
+            )
 
-            if not self.browser_wrapper.find_element_by_xpath(month_link_xpath):
+            if not self.browser_wrapper.find_element_by_xpath(month_in_year_xpath):
                 self.logger.error(f"Month {target_month} not found in year {target_year}")
                 return None
 
-            self.logger.info(f"Found month {target_month}, downloading ZIP...")
+            self.logger.info(f"Found month {target_month} in year {target_year}, downloading ZIP...")
 
-            # Click on month directly downloads ZIP
-            # Use expect_download_and_click to capture download
-            parent_link_xpath = f"//div[contains(@class, 'css-146c3p1') and contains(text(), '{target_month}')]/parent::div/parent::div"
+            # Log for debugging
+            try:
+                element_text = self.browser_wrapper.get_text(month_in_year_xpath)
+                self.logger.info(f"Element to click: '{element_text[:100] if element_text else 'None'}...'")
+            except Exception as e:
+                self.logger.warning(f"Could not get element text: {str(e)}")
 
             zip_file_path = self.browser_wrapper.expect_download_and_click(
-                parent_link_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
+                month_in_year_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
             )
 
             if zip_file_path:
@@ -645,8 +647,8 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
     def _download_individual_reports(self, billing_cycle: BillingCycle, file_map: dict) -> List[FileDownloadInfo]:
         """
-        Downloads Mobility Device Summary report from Summary Reports.
-        Flow similar to ATT:
+        Downloads Mobility Device Summary report from Detail Reports.
+        Flow:
         1. Configure Scope (account) filter
         2. Configure Date Range filter
         3. Find "Mobility Device Summary" section in accordion
