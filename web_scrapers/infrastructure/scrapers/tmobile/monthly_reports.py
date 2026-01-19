@@ -341,43 +341,62 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # First, check if the account number is already visible
             account_xpath = f"//mat-tree-node//span[contains(text(), '{account_number}')]"
 
+            self.logger.info(f"[TREE] Buscando cuenta {account_number} en el arbol...")
+            self.logger.info(f"[TREE] Xpath de busqueda: {account_xpath}")
+
             if self.browser_wrapper.is_element_visible(account_xpath, timeout=2000):
-                self.logger.info(f"Cuenta {account_number} encontrada directamente, seleccionando...")
+                self.logger.info(f"[TREE] Cuenta {account_number} encontrada directamente (sin expandir)")
                 self.browser_wrapper.click_element(account_xpath)
                 time.sleep(2)
                 return True
 
+            self.logger.info(f"[TREE] Cuenta no visible, expandiendo nodos (max depth: {max_depth})...")
+
             # If not visible, we need to expand parent nodes
             for depth in range(max_depth):
-                self.logger.info(f"Buscando nodos expandibles (profundidad {depth + 1})...")
+                self.logger.info(f"[TREE] Expansion nivel {depth + 1}/{max_depth}...")
 
                 # Use JavaScript to find and expand all expandable nodes
                 expanded_count = self._expand_all_tree_nodes()
 
+                self.logger.info(f"[TREE] Nodos expandidos en este nivel: {expanded_count}")
+
                 if expanded_count == 0:
-                    self.logger.info("No hay mas nodos expandibles")
+                    self.logger.info("[TREE] No hay mas nodos expandibles")
                     break
 
                 time.sleep(1)
 
                 # After expanding, check if the account is now visible
                 if self.browser_wrapper.is_element_visible(account_xpath, timeout=2000):
-                    self.logger.info(f"Cuenta {account_number} encontrada, seleccionando...")
+                    self.logger.info(f"[TREE] Cuenta {account_number} encontrada despues de expansion nivel {depth + 1}")
                     self.browser_wrapper.click_element(account_xpath)
                     time.sleep(2)
                     return True
 
             # Final check after all expansions
+            self.logger.info("[TREE] Verificacion final despues de todas las expansiones...")
             if self.browser_wrapper.is_element_visible(account_xpath, timeout=2000):
-                self.logger.info(f"Cuenta {account_number} encontrada despues de expansion...")
+                self.logger.info(f"[TREE] Cuenta {account_number} encontrada en verificacion final")
                 self.browser_wrapper.click_element(account_xpath)
                 time.sleep(2)
                 return True
 
+            # Log de nodos visibles para debug
+            self.logger.error(f"[TREE] FAILED: Cuenta {account_number} no encontrada en el arbol")
+            try:
+                visible_nodes = self.browser_wrapper.page.query_selector_all("mat-tree-node")
+                node_texts = [node.inner_text().strip()[:50] for node in visible_nodes[:10]]  # Primeros 10 nodos
+                self.logger.error(f"[TREE] Primeros nodos visibles: {node_texts}")
+            except:
+                pass
+
             return False
 
         except Exception as e:
-            self.logger.error(f"Error en busqueda recursiva: {str(e)}")
+            self.logger.error(f"[TREE] EXCEPTION en busqueda recursiva: {str(e)}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             return False
 
     def _expand_all_tree_nodes(self) -> int:
