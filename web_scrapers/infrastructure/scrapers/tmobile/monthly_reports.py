@@ -211,6 +211,9 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _select_billing_period(self, billing_cycle: BillingCycle) -> bool:
         """Select the billing period from the dropdown based on billing_cycle.end_date."""
         try:
+            # Primero, verificar y cerrar cualquier modal bloqueante
+            self._dismiss_blocking_modal()
+
             # Format the expected option text: "Month Year" (e.g., "December 2025")
             end_date = billing_cycle.end_date
             month_name = end_date.strftime("%B")  # Full month name
@@ -222,6 +225,10 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             # Click on the billing period dropdown to open it
             billing_period_dropdown_xpath = '//*[@id="mat-select-0"]'
             billing_period_by_placeholder_xpath = "//mat-select[@placeholder='Select billing period']"
+
+            # Esperar a que el dropdown cargue sus opciones
+            self.logger.info("[PERIOD] Esperando carga de opciones del dropdown (15s)...")
+            time.sleep(15)
 
             self.logger.info(f"[PERIOD] Buscando dropdown por ID: {billing_period_dropdown_xpath}")
             if self.browser_wrapper.is_element_visible(billing_period_dropdown_xpath, timeout=5000):
@@ -541,34 +548,132 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"Error seleccionando opcion '{option_text}': {str(e)}")
             return False
 
+    def _dismiss_blocking_modal(self) -> bool:
+        """Detecta y cierra cualquier modal bloqueante (error o confirmación)."""
+        try:
+            modal_xpath = "//mat-dialog-container"
+            backdrop_xpath = "//div[contains(@class, 'cdk-overlay-backdrop-showing')]"
+
+            # Verificar si hay un modal bloqueante
+            if not self.browser_wrapper.is_element_visible(backdrop_xpath, timeout=1000):
+                return True  # No hay modal bloqueante
+
+            self.logger.warning("[MODAL] Detectado modal bloqueante, intentando cerrar...")
+
+            # Detectar si es un modal de error "Something went wrong"
+            error_modal_xpath = "//mat-dialog-container//span[contains(text(), 'Something went wrong')]"
+            reload_button_xpath = "//mat-dialog-container//button[contains(., 'Reload reports')]"
+            close_button_xpath = "//mat-dialog-container//button[contains(@class, 'close')]"
+            close_icon_xpath = "//mat-dialog-container//mat-icon[contains(text(), 'close')]"
+
+            # Si es un modal de error, hacer click en "Reload reports" o cerrar
+            if self.browser_wrapper.is_element_visible(error_modal_xpath, timeout=2000):
+                self.logger.warning("[MODAL] Modal de error 'Something went wrong' detectado")
+
+                # Intentar click en "Reload reports"
+                if self.browser_wrapper.is_element_visible(reload_button_xpath, timeout=2000):
+                    self.logger.info("[MODAL] Clickeando 'Reload reports'...")
+                    self.browser_wrapper.click_element(reload_button_xpath)
+                    time.sleep(3)
+
+                    # Esperar a que la página recargue
+                    self.logger.info("[MODAL] Esperando recarga de página (30s)...")
+                    time.sleep(30)
+                    return True
+
+            # Intentar cerrar con botón close
+            if self.browser_wrapper.is_element_visible(close_button_xpath, timeout=1000):
+                self.logger.info("[MODAL] Cerrando con botón close...")
+                self.browser_wrapper.click_element(close_button_xpath)
+                time.sleep(2)
+                if not self.browser_wrapper.is_element_visible(backdrop_xpath, timeout=1000):
+                    return True
+
+            # Intentar cerrar con icono close
+            if self.browser_wrapper.is_element_visible(close_icon_xpath, timeout=1000):
+                self.logger.info("[MODAL] Cerrando con icono close...")
+                self.browser_wrapper.click_element(close_icon_xpath)
+                time.sleep(2)
+                if not self.browser_wrapper.is_element_visible(backdrop_xpath, timeout=1000):
+                    return True
+
+            # Intentar con ESC
+            self.logger.info("[MODAL] Intentando cerrar con ESC...")
+            for _ in range(5):
+                self.browser_wrapper.page.keyboard.press("Escape")
+                time.sleep(0.5)
+
+            time.sleep(2)
+            if not self.browser_wrapper.is_element_visible(backdrop_xpath, timeout=1000):
+                return True
+
+            # Último recurso: refrescar la página
+            self.logger.warning("[MODAL] No se pudo cerrar modal, refrescando página...")
+            self.browser_wrapper.page.reload()
+            time.sleep(10)
+            return True
+
+        except Exception as e:
+            self.logger.error(f"[MODAL] Error manejando modal bloqueante: {str(e)}")
+            return False
+
     def _close_confirmation_modal(self) -> bool:
         """Cierra el modal de confirmacion despues de 'Run as is'."""
         try:
             self.logger.info("Cerrando modal de confirmacion...")
 
-            # El modal tiene un boton de cerrar con mat-icon
-            close_button_xpath = (
-                "//mat-dialog-container//button[contains(@class, 'close') or .//mat-icon[contains(text(), 'close')]]"
-            )
+            # Esperar a que aparezca el modal
+            time.sleep(2)
+
+            # Xpaths para el modal y sus elementos
+            modal_xpath = "//mat-dialog-container"
+            backdrop_xpath = "//div[contains(@class, 'cdk-overlay-backdrop')]"
+            close_button_xpath = "//mat-dialog-container//button[contains(@class, 'close')]"
             close_icon_xpath = "//mat-dialog-container//mat-icon[contains(text(), 'close')]"
 
-            # Esperar a que aparezca el modal
-            time.sleep(1)
+            # Intentar cerrar el modal con diferentes métodos
+            modal_closed = False
 
-            if self.browser_wrapper.is_element_visible(close_button_xpath, timeout=5000):
+            # Método 1: Click en botón close
+            if self.browser_wrapper.is_element_visible(close_button_xpath, timeout=3000):
+                self.logger.info("Intentando cerrar con boton close...")
                 self.browser_wrapper.click_element(close_button_xpath)
-            elif self.browser_wrapper.is_element_visible(close_icon_xpath, timeout=3000):
-                self.browser_wrapper.click_element(close_icon_xpath)
-            else:
-                # Intentar con ESC
-                self.browser_wrapper.page.keyboard.press("Escape")
-                self.logger.info("Modal cerrado con ESC")
-                time.sleep(1)
-                return True
+                time.sleep(2)
+                modal_closed = not self.browser_wrapper.is_element_visible(modal_xpath, timeout=1000)
 
-            time.sleep(1)
-            self.logger.info("Modal de confirmacion cerrado")
-            return True
+            # Método 2: Click en icono close
+            if not modal_closed and self.browser_wrapper.is_element_visible(close_icon_xpath, timeout=2000):
+                self.logger.info("Intentando cerrar con icono close...")
+                self.browser_wrapper.click_element(close_icon_xpath)
+                time.sleep(2)
+                modal_closed = not self.browser_wrapper.is_element_visible(modal_xpath, timeout=1000)
+
+            # Método 3: Presionar ESC múltiples veces
+            if not modal_closed:
+                self.logger.info("Intentando cerrar con ESC...")
+                for _ in range(3):
+                    self.browser_wrapper.page.keyboard.press("Escape")
+                    time.sleep(1)
+                modal_closed = not self.browser_wrapper.is_element_visible(modal_xpath, timeout=1000)
+
+            # Método 4: Click en el backdrop (fuera del modal)
+            if not modal_closed and self.browser_wrapper.is_element_visible(backdrop_xpath, timeout=1000):
+                self.logger.info("Intentando cerrar clickeando el backdrop...")
+                try:
+                    self.browser_wrapper.page.click(backdrop_xpath, force=True)
+                    time.sleep(2)
+                    modal_closed = not self.browser_wrapper.is_element_visible(modal_xpath, timeout=1000)
+                except:
+                    pass
+
+            # Verificación final
+            if modal_closed:
+                self.logger.info("Modal de confirmacion cerrado exitosamente")
+                return True
+            else:
+                # Último intento: recargar la página y volver a navegar
+                self.logger.warning("Modal no se pudo cerrar - el backdrop sigue visible")
+                return False
 
         except Exception as e:
             self.logger.error(f"Error cerrando modal: {str(e)}")
@@ -727,6 +832,9 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _click_other_templates_tab(self) -> bool:
         """Hace click en la tab 'Other templates'."""
         try:
+            # Verificar y cerrar cualquier modal bloqueante
+            self._dismiss_blocking_modal()
+
             self.logger.info("Cambiando a tab Other templates...")
 
             other_templates_xpath = "//div[@role='tab']//span[contains(text(), 'Other templates')]"
@@ -1014,7 +1122,7 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # ========== FASE 3: Esperar generacion de reportes ==========
             self.logger.info("\n--- FASE 3: Esperando generacion de reportes ---")
-            wait_time_seconds = 180  # 3 minutos
+            wait_time_seconds = 420  # 7 minutos
             self.logger.info(f"Esperando {wait_time_seconds // 60} minutos para que se generen los reportes...")
 
             # Reset a la pantalla principal mientras esperamos
