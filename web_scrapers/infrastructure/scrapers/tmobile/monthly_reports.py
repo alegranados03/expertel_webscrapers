@@ -104,9 +104,18 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return {"section": "billing_templates", "account": account_number}
 
         except RuntimeError:
-            # Re-raise para que el mensaje descriptivo llegue al job
+            # Reset antes de re-raise para dejar UI limpia para siguiente job
+            try:
+                self._reset_to_main_screen()
+            except:
+                pass
             raise
         except Exception as e:
+            # Reset antes de raise para dejar UI limpia para siguiente job
+            try:
+                self._reset_to_main_screen()
+            except:
+                pass
             error_msg = f"EXCEPTION en _find_files_section: {str(e)}"
             self.logger.error(error_msg)
             import traceback
@@ -140,25 +149,7 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     self.logger.error(f"[NAV] Intentados: ID='{reporting_panel_xpath}', Text='{reporting_by_text_xpath}'")
                     return False
 
-            # Now click on "My Reports" submenu item
-            my_reports_xpath = "//mat-list-item[contains(@aria-label, 'My Reports')]"
-            my_reports_text_xpath = "//mat-list-item//span[contains(text(), 'My Reports')]"
-
-            self.logger.info("[NAV] Esperando expansion del panel (2s)...")
-            time.sleep(2)  # Wait for expansion animation
-
-            self.logger.info(f"[NAV] Buscando submenu 'My Reports'...")
-            if self.browser_wrapper.is_element_visible(my_reports_xpath, timeout=5000):
-                self.logger.info("[NAV] 'My Reports' encontrado por aria-label, haciendo click...")
-                self.browser_wrapper.click_element(my_reports_xpath)
-            elif self.browser_wrapper.is_element_visible(my_reports_text_xpath, timeout=5000):
-                self.logger.info("[NAV] 'My Reports' encontrado por texto, haciendo click...")
-                self.browser_wrapper.click_element(my_reports_text_xpath)
-            else:
-                self.logger.error("[NAV] FAILED: No se encontro submenu 'My Reports'")
-                self.logger.error(f"[NAV] Intentados: aria-label='{my_reports_xpath}', Text='{my_reports_text_xpath}'")
-                return False
-
+            # My Reports se abre automaticamente al hacer click en Reporting
             self.logger.info("[NAV] Esperando carga de pagina My Reports (5s)...")
             time.sleep(5)
 
