@@ -31,6 +31,7 @@ class PhoneNumberChoices(models.TextChoices):
 
 class ScraperJobStatus(models.TextChoices):
     PENDING = "pending", "Pending"
+    IN_PROGRESS = "in_progress", "In Progress"
     RUNNING = "running", "Running"
     SUCCESS = "success", "Success"
     ERROR = "error", "Error"

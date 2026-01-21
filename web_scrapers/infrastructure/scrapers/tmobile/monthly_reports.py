@@ -622,14 +622,21 @@ class TMobileMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             self.logger.info("Cerrando modal de confirmacion...")
 
-            # Esperar a que aparezca el modal
-            time.sleep(2)
-
             # Xpaths para el modal y sus elementos
             modal_xpath = "//mat-dialog-container"
             backdrop_xpath = "//div[contains(@class, 'cdk-overlay-backdrop')]"
             close_button_xpath = "//mat-dialog-container//button[contains(@class, 'close')]"
             close_icon_xpath = "//mat-dialog-container//mat-icon[contains(text(), 'close')]"
+
+            # Esperar a que aparezca el modal (puede tardar hasta 60 segundos)
+            self.logger.info("Esperando a que aparezca el modal de confirmacion (max 60s)...")
+            modal_appeared = self.browser_wrapper.is_element_visible(modal_xpath, timeout=60000)
+
+            if not modal_appeared:
+                self.logger.warning("Modal de confirmacion no apareció después de 60s")
+                return True  # Continuar de todos modos
+
+            self.logger.info("Modal de confirmacion detectado, cerrando...")
 
             # Intentar cerrar el modal con diferentes métodos
             modal_closed = False

@@ -48,6 +48,7 @@ class PhoneNumberStatus(str, Enum):
 
 class ScraperJobStatus(str, Enum):
     PENDING = "pending"
+    IN_PROGRESS = "in_progress"
     RUNNING = "running"
     SUCCESS = "success"
     ERROR = "error"

@@ -5,6 +5,7 @@ ScraperJobService - Service for managing ScraperJobs with available_at support
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from django.db import transaction
 from django.db.models import Case, Q, Value, When
 from django.utils import timezone
 
@@ -62,17 +63,23 @@ class ScraperJobService:
 
     def get_available_scraper_jobs(self, include_null_available_at: bool = True) -> List[ScraperJob]:
         """
-        Get all scraper jobs that are available for execution using repositories.
+        Get and claim scraper jobs for execution, limited to a single scraper_config.
+
+        This method:
+        1. Finds the first PENDING job
+        2. Gets all PENDING jobs with the same scraper_config
+        3. Marks them as IN_PROGRESS atomically
+        4. Returns those jobs (main.py will mark them as RUNNING when executing)
 
         Args:
             include_null_available_at: Whether to include jobs with available_at=NULL for compatibility
 
         Returns:
-            List of ScraperJob Pydantic entities available for execution
+            List of ScraperJob Pydantic entities for execution (from single scraper_config)
         """
         current_time = timezone.now()
 
-        # Query Django models with NULL safety for transition
+        # Build base query filter for PENDING jobs
         query_filter = Q(status=ScraperJobStatus.PENDING)
 
         if include_null_available_at:
@@ -88,15 +95,35 @@ class ScraperJobService:
             default=Value(99),
         )
 
-        # Order by credential, account, type (custom order), and available_at
-        # to maximize session reuse and run scrapers in optimal sequence
-        django_jobs = (
+        # 1. Find the first available PENDING job
+        first_job = (
             DjangoScraperJob.objects.filter(query_filter)
             .annotate(type_order=type_order)
             .order_by("scraper_config__credential_id", "scraper_config__account_id", "type_order", "available_at")
+            .first()
         )
 
-        # Convert Django models to Pydantic entities using repositories
+        if not first_job:
+            return []
+
+        target_scraper_config_id = first_job.scraper_config_id
+
+        # 2. Mark all PENDING jobs with this scraper_config as IN_PROGRESS
+        DjangoScraperJob.objects.filter(
+            query_filter,
+            scraper_config_id=target_scraper_config_id,
+        ).update(status=ScraperJobStatus.IN_PROGRESS)
+
+        # 3. Fetch the jobs that are now IN_PROGRESS for this scraper_config
+        django_jobs = (
+            DjangoScraperJob.objects.filter(
+                status=ScraperJobStatus.IN_PROGRESS,
+                scraper_config_id=target_scraper_config_id,
+            )
+            .annotate(type_order=type_order)
+            .order_by("type_order", "available_at")
+        )
+
         return [self.scraper_job_repo.to_entity(job) for job in django_jobs]
 
     def get_scraper_job_with_complete_context(self, scraper_job_id: int) -> ScraperJobCompleteContext:
