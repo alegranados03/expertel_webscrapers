@@ -108,17 +108,35 @@ class ScraperJobService:
 
         target_scraper_config_id = first_job.scraper_config_id
 
-        # 2. Mark all PENDING jobs with this scraper_config as IN_PROGRESS
-        DjangoScraperJob.objects.filter(
-            query_filter,
-            scraper_config_id=target_scraper_config_id,
+        # 2. Get the specific IDs we want to claim (must be done before UPDATE)
+        # This ensures we only process jobs WE claimed, not jobs from failed previous runs
+        target_job_ids = list(
+            DjangoScraperJob.objects.filter(
+                query_filter,
+                scraper_config_id=target_scraper_config_id,
+            ).values_list("id", flat=True)
+        )
+
+        if not target_job_ids:
+            return []
+
+        # 3. Atomically mark these specific PENDING jobs as IN_PROGRESS
+        # The status=PENDING filter prevents race conditions - only PENDING jobs are updated
+        updated_count = DjangoScraperJob.objects.filter(
+            id__in=target_job_ids,
+            status=ScraperJobStatus.PENDING,  # Extra safety: only update if still PENDING
         ).update(status=ScraperJobStatus.IN_PROGRESS)
 
-        # 3. Fetch the jobs that are now IN_PROGRESS for this scraper_config
+        if updated_count == 0:
+            # Another instance already claimed these jobs
+            return []
+
+        # 4. Fetch only the jobs we successfully claimed
+        # Use the specific IDs AND verify they are IN_PROGRESS (our update succeeded)
         django_jobs = (
             DjangoScraperJob.objects.filter(
+                id__in=target_job_ids,
                 status=ScraperJobStatus.IN_PROGRESS,
-                scraper_config_id=target_scraper_config_id,
             )
             .annotate(type_order=type_order)
             .order_by("type_order", "available_at")
@@ -254,12 +272,18 @@ class ScraperJobService:
             status=ScraperJobStatus.PENDING, available_at__isnull=True
         ).count()
 
+        in_progress = DjangoScraperJob.objects.filter(status=ScraperJobStatus.IN_PROGRESS).count()
+
+        running = DjangoScraperJob.objects.filter(status=ScraperJobStatus.RUNNING).count()
+
         return ScraperStatistics(
             timestamp=current_time,
             total_pending=total_pending,
             available_now=available_now,
             future_scheduled=future_scheduled,
             null_available_at=null_available,
+            in_progress=in_progress,
+            running=running,
         )
 
     def update_scraper_job_status(

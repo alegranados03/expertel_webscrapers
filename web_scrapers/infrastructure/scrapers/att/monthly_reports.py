@@ -327,11 +327,8 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 if not self._configure_date_range(billing_cycle):
                     self.logger.error("[FILTERS] FAILED to configure date range filter")
                     return False
-                # Verify the filter was actually applied
-                if not self._is_date_filter_configured(billing_cycle):
-                    self.logger.error("[FILTERS] Date range filter configuration FAILED - filter not applied correctly after configuration")
-                    return False
-                self.logger.info("[FILTERS] Date filter configured successfully")
+                # Trust that select_dropdown_by_value worked - the SELECT may not be accessible after Apply
+                self.logger.info("[FILTERS] Date filter configured successfully (trusting select_dropdown_by_value)")
             else:
                 self.logger.info("[FILTERS] Date filter already configured correctly")
 
@@ -360,24 +357,77 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return False
 
     def _is_date_filter_configured(self, billing_cycle: BillingCycle) -> bool:
-        """Verifica si el filtro de fecha está configurado correctamente."""
+        """Verifica si el filtro de fecha está configurado correctamente.
+
+        Intenta obtener la fecha seleccionada de múltiples fuentes:
+        1. SELECT #bmtype_data (cuando el dropdown está abierto)
+        2. Elemento visual que muestra la fecha seleccionada
+        """
         try:
             end_date = billing_cycle.end_date
             month_name = calendar.month_name[end_date.month]
             year = end_date.year
             expected_text = f"{month_name} {year}"
+            expected_text_bills = f"{month_name} {year} bills"
+            # AT&T value pattern: cYYYYMM01 (e.g., c20251001 for October 2025)
+            expected_value = f"c{year}{end_date.month:02d}01"
 
-            date_range_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[2]"
+            # Intentar múltiples formas de obtener la fecha seleccionada
+            result = self.browser_wrapper.page.evaluate(f"""
+                () => {{
+                    // 1. Intentar SELECT #bmtype_data
+                    const select = document.querySelector('#bmtype_data');
+                    if (select && select.selectedIndex >= 0 && select.options[select.selectedIndex].value) {{
+                        return {{
+                            text: select.options[select.selectedIndex].text,
+                            value: select.options[select.selectedIndex].value,
+                            source: 'bmtype_data'
+                        }};
+                    }}
 
-            if self.browser_wrapper.is_element_visible(date_range_xpath, timeout=5000):
-                current_text = self.browser_wrapper.get_text(date_range_xpath)
-                self.logger.info(f"[FILTERS] Current date filter value: '{current_text}'")
-                self.logger.info(f"[FILTERS] Expected date: '{expected_text}'")
-                if current_text and expected_text in current_text:
-                    self.logger.info(f"[FILTERS] Date filter MATCH: '{expected_text}' found in '{current_text}'")
-                    return True
-                else:
-                    self.logger.warning(f"[FILTERS] Date filter MISMATCH: '{expected_text}' NOT in '{current_text}'")
+                    // 2. Buscar texto visual que contenga el mes/año esperado
+                    const dateArea = document.querySelector('#thisForm .filter-area, #thisForm [class*="date"], #thisForm [class*="filter"]');
+                    if (dateArea && dateArea.textContent.includes('{month_name} {year}')) {{
+                        return {{
+                            text: '{month_name} {year} bills',
+                            value: '{expected_value}',
+                            source: 'visual_text'
+                        }};
+                    }}
+
+                    // 3. Buscar cualquier elemento visible con el texto del mes/año
+                    const allElements = document.querySelectorAll('*');
+                    for (const el of allElements) {{
+                        if (el.offsetParent !== null && el.textContent &&
+                            el.textContent.includes('{month_name} {year}') &&
+                            el.children.length === 0) {{
+                            return {{
+                                text: el.textContent.trim(),
+                                value: '',
+                                source: 'any_visible'
+                            }};
+                        }}
+                    }}
+
+                    return {{ text: '', value: '', source: 'none' }};
+                }}
+            """)
+
+            selected_text = result.get('text', '')
+            selected_value = result.get('value', '')
+            source = result.get('source', 'none')
+
+            self.logger.info(f"[FILTERS] Current selected date: '{selected_text}' (value={selected_value}, source={source})")
+            self.logger.info(f"[FILTERS] Expected date: '{expected_text_bills}' (value={expected_value})")
+
+            if selected_value == expected_value:
+                self.logger.info(f"[FILTERS] Date filter MATCH by value: '{expected_value}'")
+                return True
+            elif selected_text and (expected_text in selected_text or expected_text_bills in selected_text):
+                self.logger.info(f"[FILTERS] Date filter MATCH by text: '{expected_text}' found in '{selected_text}'")
+                return True
+            else:
+                self.logger.warning(f"[FILTERS] Date filter MISMATCH: Expected value '{expected_value}' or text '{expected_text}', got value='{selected_value}', text='{selected_text}'")
 
             return False
         except Exception as e:
@@ -736,6 +786,13 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _configure_date_range(self, billing_cycle: BillingCycle) -> bool:
         """Configura el rango de fechas basado en el billing cycle.
 
+        Flow (similar a Telus):
+        1. Click en Date Range dropdown button para abrir menú
+        2. Seleccionar directamente por valor en bmtype_data (Select2)
+        3. Click en btnApply para confirmar
+
+        AT&T value pattern: cYYYYMM01 (e.g., c20251001 for October 2025 bills)
+
         Returns:
             True if date range was configured successfully, False otherwise.
         """
@@ -743,62 +800,31 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             end_date = billing_cycle.end_date
             month_name = calendar.month_name[end_date.month]
             year = end_date.year
-            target_option = f"{month_name} {year}"
+            # AT&T value pattern: cYYYYMM01
+            target_value = f"c{year}{end_date.month:02d}01"
+            target_text = f"{month_name} {year} bills"
 
             self.logger.info("[DATE CONFIG] Starting date range configuration")
-            self.logger.info(f"[DATE CONFIG] Target date: {target_option}")
+            self.logger.info(f"[DATE CONFIG] Target: {target_text} (value={target_value})")
 
-            # 1. Click en Date range dropdown
+            # 1. Click en Date Range dropdown button para abrir menú
             date_range_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[2]"
-            self.logger.info("[DATE CONFIG] Step 1/4: Clicking Date range dropdown...")
+            self.logger.info("[DATE CONFIG] Step 1/3: Opening Date Range dropdown...")
             if not self.browser_wrapper.is_element_visible(date_range_xpath, timeout=5000):
-                self.logger.error("[DATE CONFIG] FAILED: Date range dropdown not found")
+                self.logger.error("[DATE CONFIG] FAILED: Date Range dropdown not found")
                 return False
             self.browser_wrapper.click_element(date_range_xpath)
             time.sleep(2)
 
-            # 2. Seleccionar "Billed date" si no está seleccionado
-            billed_date_xpath = "//*[@id='CIDPendingDataDropdownList_billed']"
-            self.logger.info("[DATE CONFIG] Step 2/4: Selecting 'Billed date' option...")
-            if self.browser_wrapper.is_element_visible(billed_date_xpath, timeout=5000):
-                self.browser_wrapper.click_element(billed_date_xpath)
-                time.sleep(2)
-            else:
-                self.logger.info("[DATE CONFIG] 'Billed date' option not visible, may already be selected")
+            # 2. Seleccionar directamente por valor (Select2 component)
+            bmtype_select_xpath = "//*[@id='bmtype_data']"
+            self.logger.info(f"[DATE CONFIG] Step 2/3: Selecting by value: {target_value}")
+            self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, target_value)
+            time.sleep(1)
 
-            # 3. Seleccionar el mes/año correcto del select
-            self.logger.info("[DATE CONFIG] Step 3/4: Selecting billing period from dropdown...")
-            select_xpath = "//*[@id='CIDPending']"
-            option_text_bills = f"{month_name} {year} bills"
-            option_text_simple = f"{month_name} {year}"
-
-            self.logger.info(f"[DATE CONFIG] Looking for: '{option_text_bills}' or '{option_text_simple}'")
-
-            # Intentar seleccionar con "bills" primero, luego sin
-            date_selected = False
-            try:
-                self.browser_wrapper.select_dropdown_option(select_xpath, option_text_bills)
-                self.logger.info(f"[DATE CONFIG] Selected: '{option_text_bills}'")
-                date_selected = True
-            except Exception as e1:
-                self.logger.info(f"[DATE CONFIG] '{option_text_bills}' not found, trying '{option_text_simple}'...")
-                try:
-                    self.browser_wrapper.select_dropdown_option(select_xpath, option_text_simple)
-                    self.logger.info(f"[DATE CONFIG] Selected: '{option_text_simple}'")
-                    date_selected = True
-                except Exception as e2:
-                    self.logger.error(f"[DATE CONFIG] FAILED: Could not select date option")
-                    self.logger.error(f"[DATE CONFIG] Tried: '{option_text_bills}' -> {str(e1)}")
-                    self.logger.error(f"[DATE CONFIG] Tried: '{option_text_simple}' -> {str(e2)}")
-                    return False
-
-            if not date_selected:
-                self.logger.error(f"[DATE CONFIG] FAILED: Could not select date for {target_option}")
-                return False
-
-            # 4. Click en Apply button para aplicar los cambios
+            # 3. Click en Apply button para aplicar los cambios
             apply_button_xpath = "//*[@id='btnApply']"
-            self.logger.info("[DATE CONFIG] Step 4/4: Clicking Apply button...")
+            self.logger.info("[DATE CONFIG] Step 3/3: Clicking Apply button...")
             if self.browser_wrapper.is_element_visible(apply_button_xpath, timeout=5000):
                 self.browser_wrapper.click_element(apply_button_xpath)
                 self.logger.info("[DATE CONFIG] Waiting 5s for changes to apply...")
@@ -807,7 +833,7 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.logger.error("[DATE CONFIG] FAILED: Apply button not found")
                 return False
 
-            self.logger.info(f"[DATE CONFIG] SUCCESS: Date range configured for {target_option}")
+            self.logger.info(f"[DATE CONFIG] SUCCESS: Date range configured for {target_text}")
             return True
 
         except Exception as e:

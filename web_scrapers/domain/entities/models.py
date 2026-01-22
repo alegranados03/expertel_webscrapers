@@ -318,6 +318,8 @@ class ScraperStatistics(BaseModel):
     available_now: int
     future_scheduled: int
     null_available_at: int
+    in_progress: int = 0  # Jobs claimed but not yet running
+    running: int = 0  # Jobs currently being executed
 
     model_config = {"from_attributes": True}
 
