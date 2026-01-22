@@ -484,9 +484,9 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.logger.error(f"[FAILED] Expected exact names: {report_names}")
                 return None
 
-            # 2. Esperar 1 minuto después de entrar al reporte
-            self.logger.info("[Step 2/7] Waiting 60 seconds for report data to load...")
-            time.sleep(60)
+            # 2. Esperar a que cargue el reporte
+            self.logger.info("[Step 2/7] Waiting 30 seconds for report data to load...")
+            time.sleep(30)
 
             # 3. Click en Export button
             self.logger.info("[Step 3/7] Looking for Export button...")
