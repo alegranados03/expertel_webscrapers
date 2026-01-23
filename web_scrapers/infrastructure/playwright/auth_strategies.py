@@ -227,8 +227,6 @@ class BellAuthStrategy(AuthBaseStrategy):
         print("Clicking Continue...")
         self.browser_wrapper.change_button_attribute(continue_button_xpath, "disabled", "false")
         self.browser_wrapper.click_element(continue_button_xpath)
-
-        self.browser_wrapper.wait_for_page_load()
         time.sleep(5)
 
         if self.browser_wrapper.is_element_visible(verification_input_xpath, timeout=3000):
