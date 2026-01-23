@@ -845,7 +845,7 @@ class TMobileAuthStrategy(AuthBaseStrategy):
             self.logger.info("Starting login in T-Mobile...")
 
             self.browser_wrapper.goto(self.get_login_url())
-            self.browser_wrapper.wait_for_page_load(60000)
+
             time.sleep(3)
 
             # Handle language modal if present (select English)

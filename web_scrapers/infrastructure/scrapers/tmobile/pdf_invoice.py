@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, List, Optional
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
@@ -118,66 +118,56 @@ class TMobilePDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
             # Verificar y cerrar cualquier modal bloqueante
             self._dismiss_blocking_modal()
 
-            # 1. Click en charges tab
-            self.logger.info("[Step 1/6] Buscando charges tab...")
-            charges_tab_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/app-digital-billing-tabs/div/div[2]/mat-tab-group/mat-tab-header/div/div/div/div[2]/div"
-            if self.browser_wrapper.is_element_visible(charges_tab_xpath, timeout=10000):
-                self.logger.info("[Step 1/6] Haciendo click en charges tab...")
-                self.browser_wrapper.click_element(charges_tab_xpath)
-                time.sleep(3)
-            else:
-                self.logger.info("[Step 1/6] Charges tab no encontrado, continuando...")
-
-            # 2. Click en date selector
-            self.logger.info("[Step 2/6] Buscando date selector...")
+            # 1. Click en date selector
+            self.logger.info("[Step 1/5] Buscando date selector...")
             date_selector_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/div/div/div[1]/mat-form-field/div[1]/div[2]/div/mat-select"
             if not self.browser_wrapper.is_element_visible(date_selector_xpath, timeout=10000):
-                self.logger.error("[Step 2/6] FAILED: Date selector no encontrado")
+                self.logger.error("[Step 1/5] FAILED: Date selector no encontrado")
                 return downloaded_files
 
-            self.logger.info("[Step 2/6] Abriendo selector de fechas...")
+            self.logger.info("[Step 1/5] Abriendo selector de fechas...")
             self.browser_wrapper.click_element(date_selector_xpath)
             time.sleep(3)
 
-            # 3. Seleccionar el periodo mas cercano al billing_cycle.end_date
-            self.logger.info("[Step 3/6] Seleccionando periodo de facturacion...")
+            # 2. Seleccionar el periodo mas cercano al billing_cycle.end_date
+            self.logger.info("[Step 2/5] Seleccionando periodo de facturacion...")
             selected_option = self._select_best_billing_period(billing_cycle.end_date)
             if not selected_option:
-                self.logger.error("[Step 3/6] FAILED: No se pudo seleccionar el periodo de facturacion")
+                self.logger.error("[Step 2/5] FAILED: No se pudo seleccionar el periodo de facturacion")
                 return downloaded_files
-            self.logger.info("[Step 3/6] OK - Periodo seleccionado")
+            self.logger.info("[Step 2/5] OK - Periodo seleccionado")
 
             time.sleep(3)
 
-            # 4. Click en view pdf bill
-            self.logger.info("[Step 4/6] Buscando boton view PDF bill...")
+            # 3. Click en view pdf bill
+            self.logger.info("[Step 3/5] Buscando boton view PDF bill...")
             view_pdf_button_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[1]/div/app-digital-billing/div/app-digital-billing-tabs/div/div[2]/button"
             if not self.browser_wrapper.is_element_visible(view_pdf_button_xpath, timeout=10000):
-                self.logger.error("[Step 4/6] FAILED: Boton view pdf bill no encontrado")
+                self.logger.error("[Step 3/5] FAILED: Boton view pdf bill no encontrado")
                 return downloaded_files
 
-            self.logger.info("[Step 4/6] Haciendo click en view PDF bill...")
+            self.logger.info("[Step 3/5] Haciendo click en view PDF bill...")
             self.browser_wrapper.click_element(view_pdf_button_xpath)
             time.sleep(5)
 
-            # 5. Click en detailed bill radio button
-            self.logger.info("[Step 5/6] Buscando detailed bill radio button...")
+            # 4. Click en detailed bill radio button
+            self.logger.info("[Step 4/5] Buscando detailed bill radio button...")
             detailed_radio_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[2]/div[2]/div/mat-dialog-container/div/div/download-bill-dialog/mat-dialog-content/mat-radio-group/mat-radio-button[2]/div/div/input"
             if self.browser_wrapper.is_element_visible(detailed_radio_xpath, timeout=10000):
-                self.logger.info("[Step 5/6] Seleccionando detailed bill...")
+                self.logger.info("[Step 4/5] Seleccionando detailed bill...")
                 self.browser_wrapper.click_element(detailed_radio_xpath)
                 time.sleep(2)
             else:
-                self.logger.info("[Step 5/6] Detailed bill radio button no encontrado, continuando...")
+                self.logger.info("[Step 4/5] Detailed bill radio button no encontrado, continuando...")
 
-            # 6. Click en download button
-            self.logger.info("[Step 6/6] Buscando boton de descarga...")
+            # 5. Click en download button
+            self.logger.info("[Step 5/5] Buscando boton de descarga...")
             download_button_xpath = "/html/body/globalnav-root/globalnav-nav/mat-sidenav-container/mat-sidenav-content/div[3]/navapp-microapp-page/div/tfb-billing-root/div/div[2]/div[2]/div/mat-dialog-container/div/div/download-bill-dialog/mat-dialog-actions/button[2]"
             if not self.browser_wrapper.is_element_visible(download_button_xpath, timeout=10000):
-                self.logger.error("[Step 6/6] FAILED: Boton de download no encontrado")
+                self.logger.error("[Step 5/5] FAILED: Boton de download no encontrado")
                 return downloaded_files
 
-            self.logger.info("[Step 6/6] Iniciando descarga...")
+            self.logger.info("[Step 5/5] Iniciando descarga...")
 
             file_path = self.browser_wrapper.expect_download_and_click(
                 download_button_xpath, timeout=60000, downloads_dir=self.job_downloads_dir
@@ -217,9 +207,13 @@ class TMobilePDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                 pass
             return downloaded_files
 
-    def _select_best_billing_period(self, target_end_date: datetime) -> bool:
+    def _select_best_billing_period(self, target_end_date) -> bool:
         """Selecciona el periodo de facturacion mas cercano al end_date del billing cycle."""
         try:
+            # Convertir a date si es datetime para comparación consistente
+            if isinstance(target_end_date, datetime):
+                target_end_date = target_end_date.date()
+
             self.logger.info(f"Buscando periodo mas cercano a: {target_end_date}")
 
             # XPath del panel de opciones
@@ -281,7 +275,7 @@ class TMobilePDFInvoiceScraperStrategy(PDFInvoiceScraperStrategy):
                         if end_month_num < month_map.get(start_month, 1):
                             period_year = current_year + 1
 
-                        period_end_date = datetime(period_year, end_month_num, int(end_day))
+                        period_end_date = date(period_year, end_month_num, int(end_day))
 
                         # Calcular que tan cerca esta esta fecha del target
                         date_diff = abs((period_end_date - target_end_date).days)
