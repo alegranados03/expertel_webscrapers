@@ -786,12 +786,12 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     def _configure_date_range(self, billing_cycle: BillingCycle) -> bool:
         """Configura el rango de fechas basado en el billing cycle.
 
-        Flow (similar a Telus):
+        Flow:
         1. Click en Date Range dropdown button para abrir menú
-        2. Seleccionar directamente por valor en bmtype_data (Select2)
+        2. Iterate options in bmtype_data to find one matching year/month pattern
         3. Click en btnApply para confirmar
 
-        AT&T value pattern: cYYYYMM01 (e.g., c20251001 for October 2025 bills)
+        AT&T value pattern: cYYYYMMDD - we search for options starting with cYYYYMM
 
         Returns:
             True if date range was configured successfully, False otherwise.
@@ -800,12 +800,13 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             end_date = billing_cycle.end_date
             month_name = calendar.month_name[end_date.month]
             year = end_date.year
-            # AT&T value pattern: cYYYYMM01
-            target_value = f"c{year}{end_date.month:02d}01"
-            target_text = f"{month_name} {year} bills"
+            # Pattern to search: cYYYYMM (without day)
+            target_pattern = f"c{year}{end_date.month:02d}"
+            target_text = f"{month_name} {year}"
 
             self.logger.info("[DATE CONFIG] Starting date range configuration")
-            self.logger.info(f"[DATE CONFIG] Target: {target_text} (value={target_value})")
+            self.logger.info(f"[DATE CONFIG] Target: {target_text}")
+            self.logger.info(f"[DATE CONFIG] Searching for options starting with: {target_pattern}")
 
             # 1. Click en Date Range dropdown button para abrir menú
             date_range_xpath = "//*[@id='thisForm']/div/div[2]/div[1]/div[2]"
@@ -816,10 +817,16 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.browser_wrapper.click_element(date_range_xpath)
             time.sleep(2)
 
-            # 2. Seleccionar directamente por valor (Select2 component)
+            # 2. Find matching option by iterating through all options
             bmtype_select_xpath = "//*[@id='bmtype_data']"
-            self.logger.info(f"[DATE CONFIG] Step 2/3: Selecting by value: {target_value}")
-            self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, target_value)
+            matching_value = self._find_matching_date_option(bmtype_select_xpath, target_pattern)
+
+            if not matching_value:
+                self.logger.error(f"[DATE CONFIG] FAILED: No option found matching pattern: {target_pattern}")
+                return False
+
+            self.logger.info(f"[DATE CONFIG] Step 2/3: Found matching option: {matching_value}")
+            self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, matching_value)
             time.sleep(1)
 
             # 3. Click en Apply button para aplicar los cambios
@@ -840,6 +847,45 @@ class ATTMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.error(f"[DATE CONFIG] EXCEPTION: {str(e)}")
             self.logger.error(traceback.format_exc())
             return False
+
+    def _find_matching_date_option(self, select_xpath: str, pattern: str) -> Optional[str]:
+        """
+        Iterates through SELECT options to find one matching the year/month pattern.
+
+        Args:
+            select_xpath: XPath of the SELECT element
+            pattern: Pattern to match (e.g., 'c202510' for October 2025)
+
+        Returns:
+            The value of the matching option, or None if not found.
+        """
+        try:
+            page = self.browser_wrapper.page
+
+            # Get all options from the SELECT
+            options = page.query_selector_all(f"xpath={select_xpath}//option")
+            self.logger.info(f"[DATE CONFIG] Found {len(options)} options in dropdown")
+
+            for option in options:
+                value = option.get_attribute("value")
+                text = option.inner_text().strip() if option else ""
+
+                if value and value.startswith(pattern):
+                    self.logger.info(f"[DATE CONFIG] Match found: value='{value}', text='{text}'")
+                    return value
+
+            # Log available options for debugging
+            self.logger.warning(f"[DATE CONFIG] No match found for pattern '{pattern}'. Available options:")
+            for option in options[:10]:  # Log first 10 options
+                value = option.get_attribute("value")
+                text = option.inner_text().strip() if option else ""
+                self.logger.warning(f"[DATE CONFIG]   - value='{value}', text='{text}'")
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"[DATE CONFIG] Error finding matching date option: {str(e)}")
+            return None
 
     def _reset_to_main_screen(self):
         """Reset a la pantalla inicial de AT&T."""

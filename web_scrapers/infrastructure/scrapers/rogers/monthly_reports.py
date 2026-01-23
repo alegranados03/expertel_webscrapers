@@ -1,8 +1,13 @@
 import logging
 import os
+import re
+import shutil
 import time
-from datetime import date
+import zipfile
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
 
 from web_scrapers.domain.entities.browser_wrapper import BrowserWrapper
 from web_scrapers.domain.entities.models import BillingCycle, BillingCycleFile, ScraperConfig
@@ -16,13 +21,18 @@ DOWNLOADS_DIR = os.path.abspath("downloads")
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 # Report configurations: (category_text, report_type_text, slug)
+# Note: BCR (Hardware Upgrade Eligibility Report) is handled separately via My Requests tab
 ROGERS_REPORTS_CONFIG: List[Tuple[str, str, str]] = [
     ("Cost Centre Detail", "Monthly Charges Breakdown", RogersFileSlug.MONTHLY_CHARGES_BREAKDOWN.value),
     ("Cost Centre Detail", "Monthly Usage Breakdown", RogersFileSlug.MONTHLY_USAGE_BREAKDOWN.value),
     ("Current Charges and Credits", "Current Charges - Subscriber Level", RogersFileSlug.CURRENT_CHARGES_SUBSCRIBER.value),
     ("Current Charges and Credits", "Credit - Subscriber Level", RogersFileSlug.CREDITS_SUBSCRIBER.value),
-    ("Custom Reports", "Balance remaining", RogersFileSlug.BALANCE_REMAINING.value),
 ]
+
+# BCR report configuration (handled via My Requests flow)
+BCR_REPORT_CATEGORY = "Wireless Eligibility Check"
+BCR_REPORT_TYPE = "Hardware Upgrade Eligibility Report"
+BCR_WAIT_TIME_SECONDS = 600  # 10 minutes
 
 
 class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
@@ -33,7 +43,15 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
     - DATA: Cost Centre Detail / Monthly Usage Breakdown
     - CCC_CHG: Current Charges and Credits / Current Charges - Subscriber Level
     - CCC_CRE: Current Charges and Credits / Credit - Subscriber Level
-    - BCR: Custom Reports / Balance remaining
+    - BCR: Hardware Upgrade Eligibility Report (via My Requests tab, ZIP processing)
+
+    Special BCR flow:
+    - If all 4 non-BCR files already have s3_key, skip directly to BCR download
+    - BCR is obtained via "Wireless Eligibility Check" > "Hardware Upgrade Eligibility Report"
+    - Goes to My Requests tab to find existing completed reports
+    - If pending, waits 10 minutes and checks again
+    - If not found, generates new report, waits 10 minutes, then downloads
+    - Downloads ZIP, extracts TXT (headers) + Excel (data), combines into final XLSX
     """
 
     def __init__(self, browser_wrapper: BrowserWrapper, job_id: int):
@@ -80,6 +98,34 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         try:
             account_number = billing_cycle.account.number
 
+            # Check if all 4 non-BCR files already have s3_key
+            non_bcr_slugs = [
+                RogersFileSlug.MONTHLY_CHARGES_BREAKDOWN.value,
+                RogersFileSlug.MONTHLY_USAGE_BREAKDOWN.value,
+                RogersFileSlug.CURRENT_CHARGES_SUBSCRIBER.value,
+                RogersFileSlug.CREDITS_SUBSCRIBER.value,
+            ]
+            all_non_bcr_have_s3_key = self._check_all_files_have_s3_key(billing_cycle_file_map, non_bcr_slugs)
+
+            if all_non_bcr_have_s3_key:
+                self.logger.info("=== ALL 4 NON-BCR FILES ALREADY HAVE S3_KEY - SKIPPING TO BCR ===")
+                # Go directly to BCR download
+                bcr_file_info = self._download_bcr_report(
+                    account_number=account_number,
+                    billing_cycle=billing_cycle,
+                    file_map=billing_cycle_file_map,
+                    only_bcr_mode=True,
+                )
+                if bcr_file_info:
+                    downloaded_files.append(bcr_file_info)
+                    self.logger.info("BCR report downloaded successfully")
+                else:
+                    self.logger.warning("4 Files already loaded Hardware Upgrade Eligibility Report still not available")
+
+                self._reset_to_main_screen()
+                return downloaded_files
+
+            # Download the 4 regular reports
             total_reports = len(ROGERS_REPORTS_CONFIG)
             for idx, (category_text, report_type_text, slug) in enumerate(ROGERS_REPORTS_CONFIG, 1):
                 self.logger.info(f"=== DOWNLOADING REPORT {idx}/{total_reports}: {slug} ===")
@@ -106,6 +152,22 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                     self.logger.info("Navigating back to reports section for next report...")
                     self._navigate_to_reports_section()
 
+            # Now download BCR report via My Requests flow
+            self.logger.info("=== DOWNLOADING BCR REPORT (Hardware Upgrade Eligibility Report) ===")
+            self._navigate_to_reports_section()
+
+            bcr_file_info = self._download_bcr_report(
+                account_number=account_number,
+                billing_cycle=billing_cycle,
+                file_map=billing_cycle_file_map,
+                only_bcr_mode=False,
+            )
+            if bcr_file_info:
+                downloaded_files.append(bcr_file_info)
+                self.logger.info("BCR report downloaded successfully")
+            else:
+                self.logger.warning("BCR report (Hardware Upgrade Eligibility Report) not available")
+
             # Reset to main screen after all downloads
             self._reset_to_main_screen()
 
@@ -119,6 +181,18 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             except:
                 pass
             return downloaded_files
+
+    def _check_all_files_have_s3_key(
+        self, file_map: Dict[str, BillingCycleFile], slugs: List[str]
+    ) -> bool:
+        """Check if all files for the given slugs have s3_key assigned."""
+        for slug in slugs:
+            bcf = file_map.get(slug)
+            if not bcf or not bcf.s3_key:
+                self.logger.info(f"File with slug '{slug}' does not have s3_key")
+                return False
+            self.logger.info(f"File with slug '{slug}' has s3_key: {bcf.s3_key}")
+        return True
 
     def _download_single_report(
         self,
@@ -616,3 +690,482 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.logger.info("Reset completed")
         except Exception as e:
             self.logger.error(f"Error resetting to main screen: {str(e)}")
+
+    # ==================== BCR REPORT METHODS (Hardware Upgrade Eligibility Report) ====================
+
+    def _download_bcr_report(
+        self,
+        account_number: str,
+        billing_cycle: BillingCycle,
+        file_map: Dict[str, BillingCycleFile],
+        only_bcr_mode: bool = False,
+    ) -> Optional[FileDownloadInfo]:
+        """Downloads the BCR report (Hardware Upgrade Eligibility Report) via My Requests flow.
+
+        Flow:
+        1. Select category "Wireless Eligibility Check" and report type "Hardware Upgrade Eligibility Report"
+        2. Go to My Requests tab
+        3. Search for a valid report (Completed, not expired, matching account)
+        4. If found: download it
+        5. If Pending: wait 10 min, refresh, check again
+        6. If not found: generate new report, wait 10 min, then try to download
+        """
+        try:
+            self.logger.info("=== STARTING BCR REPORT DOWNLOAD FLOW ===")
+
+            # Step 1: Select category and report type
+            self.logger.info(f"Selecting category: {BCR_REPORT_CATEGORY}")
+            if not self._select_category_dropdown(BCR_REPORT_CATEGORY):
+                self.logger.error(f"Failed to select category: {BCR_REPORT_CATEGORY}")
+                return None
+            time.sleep(2)
+
+            self.logger.info(f"Selecting report type: {BCR_REPORT_TYPE}")
+            if not self._select_report_type_dropdown(BCR_REPORT_TYPE):
+                self.logger.error(f"Failed to select report type: {BCR_REPORT_TYPE}")
+                return None
+            time.sleep(2)
+
+            # Step 2: Go to My Requests tab
+            if not self._navigate_to_my_requests_tab():
+                self.logger.error("Failed to navigate to My Requests tab")
+                return None
+
+            # Step 3: Search for valid report in the list
+            report_status = self._search_valid_bcr_report(account_number)
+
+            if report_status["status"] == "completed":
+                # Found a valid completed report - download it
+                self.logger.info("Found valid completed BCR report, downloading...")
+                return self._download_bcr_from_link(
+                    report_status["download_element"],
+                    billing_cycle,
+                    file_map,
+                )
+
+            elif report_status["status"] == "pending":
+                # Report is pending - wait and check again
+                self.logger.info("BCR report is pending, waiting 10 minutes...")
+                time.sleep(BCR_WAIT_TIME_SECONDS)
+
+                # Refresh and check again
+                self._refresh_reports_page()
+                if not self._navigate_to_my_requests_tab():
+                    return None
+
+                report_status = self._search_valid_bcr_report(account_number)
+                if report_status["status"] == "completed":
+                    self.logger.info("BCR report completed after waiting, downloading...")
+                    return self._download_bcr_from_link(
+                        report_status["download_element"],
+                        billing_cycle,
+                        file_map,
+                    )
+                else:
+                    self.logger.warning("BCR report still not completed after waiting")
+                    return None
+
+            else:
+                # No valid report found - generate new one
+                self.logger.info("No valid BCR report found, generating new one...")
+
+                # Need to go back to report config to select account and run report
+                self._navigate_to_reports_section()
+                time.sleep(2)
+
+                # Re-select category and report type
+                if not self._select_category_dropdown(BCR_REPORT_CATEGORY):
+                    return None
+                time.sleep(2)
+
+                if not self._select_report_type_dropdown(BCR_REPORT_TYPE):
+                    return None
+                time.sleep(2)
+
+                # Generate new report
+                if not self._generate_new_bcr_report(account_number):
+                    self.logger.error("Failed to generate new BCR report")
+                    return None
+
+                # Wait 10 minutes for report to generate
+                self.logger.info("Waiting 10 minutes for BCR report to generate...")
+                time.sleep(BCR_WAIT_TIME_SECONDS)
+
+                # Refresh and check for the report
+                self._refresh_reports_page()
+
+                # Re-select category and report type, then go to My Requests
+                if not self._select_category_dropdown(BCR_REPORT_CATEGORY):
+                    return None
+                time.sleep(2)
+
+                if not self._select_report_type_dropdown(BCR_REPORT_TYPE):
+                    return None
+                time.sleep(2)
+
+                if not self._navigate_to_my_requests_tab():
+                    return None
+
+                report_status = self._search_valid_bcr_report(account_number)
+                if report_status["status"] == "completed":
+                    self.logger.info("BCR report generated and completed, downloading...")
+                    return self._download_bcr_from_link(
+                        report_status["download_element"],
+                        billing_cycle,
+                        file_map,
+                    )
+                else:
+                    self.logger.warning("BCR report not completed after generation and waiting")
+                    return None
+
+        except Exception as e:
+            self.logger.error(f"Error downloading BCR report: {str(e)}")
+            return None
+
+    def _navigate_to_my_requests_tab(self) -> bool:
+        """Navigates to the My Requests tab."""
+        try:
+            self.logger.info("Clicking on My Requests tab...")
+            my_requests_tab_xpath = '//*[@id="myRequests-tab"]'
+
+            if not self.browser_wrapper.is_element_visible(my_requests_tab_xpath, timeout=10000):
+                self.logger.error("My Requests tab not found")
+                return False
+
+            self.browser_wrapper.click_element(my_requests_tab_xpath)
+            time.sleep(3)
+            self.logger.info("Navigated to My Requests tab")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error navigating to My Requests tab: {str(e)}")
+            return False
+
+    def _search_valid_bcr_report(self, account_number: str) -> Dict[str, Any]:
+        """Searches for a valid BCR report in the My Requests list.
+
+        Returns a dict with:
+        - status: "completed", "pending", or "not_found"
+        - download_element: the element to click for download (if completed)
+        """
+        try:
+            self.logger.info(f"Searching for valid BCR report for account: {account_number}")
+            page = self.browser_wrapper.page
+
+            # Wait for the list container to be visible
+            list_container_xpath = '//*[@id="myRequests"]/div[2]'
+            if not self.browser_wrapper.is_element_visible(list_container_xpath, timeout=10000):
+                self.logger.warning("My Requests list container not found")
+                return {"status": "not_found", "download_element": None}
+
+            # Get all list items
+            list_items = page.locator(f"xpath={list_container_xpath}//ol[@class='fav_items']//li")
+            count = list_items.count()
+            self.logger.info(f"Found {count} items in My Requests list")
+
+            today = date.today()
+            pending_found = False
+
+            for i in range(count):
+                try:
+                    item = list_items.nth(i)
+
+                    # Check if this is a Hardware Upgrade Eligibility Report
+                    report_name_div = item.locator("xpath=.//div[@class='row_name' and text()='Report name:']/following-sibling::div[@class='row_value']")
+                    if report_name_div.count() == 0:
+                        continue
+
+                    report_name = (report_name_div.first.text_content() or "").strip()
+                    if "Hardware Upgrade Eligibility Report" not in report_name:
+                        continue
+
+                    self.logger.info(f"Found Hardware Upgrade Eligibility Report at index {i}")
+
+                    # Check Show for (account number)
+                    show_for_div = item.locator("xpath=.//div[@class='row_name' and text()='Show for:']/following-sibling::div[@class='row_value']")
+                    if show_for_div.count() > 0:
+                        show_for_text = (show_for_div.first.text_content() or "").strip()
+                        # Normalize: extract digits only for comparison
+                        show_for_digits = re.sub(r"[^0-9]", "", show_for_text)
+                        account_digits = re.sub(r"[^0-9]", "", account_number)
+
+                        if account_digits not in show_for_digits:
+                            self.logger.info(f"Account mismatch: '{show_for_text}' does not contain '{account_number}'")
+                            continue
+
+                        self.logger.info(f"Account match: '{show_for_text}' contains '{account_number}'")
+
+                    # Check Status
+                    status_div = item.locator("xpath=.//div[@class='row_name' and text()='Status:']/following-sibling::div[@class='row_value']")
+                    if status_div.count() == 0:
+                        continue
+
+                    status_text = (status_div.first.text_content() or "").strip()
+                    self.logger.info(f"Report status: '{status_text}'")
+
+                    if "Pending" in status_text:
+                        pending_found = True
+                        continue
+
+                    if "Completed" not in status_text:
+                        continue
+
+                    # Check Expiry Date
+                    expiry_div = item.locator("xpath=.//div[@class='row_name' and text()='Expiry Date:']/following-sibling::div[@class='row_value']")
+                    if expiry_div.count() > 0:
+                        expiry_text = (expiry_div.first.text_content() or "").strip()
+                        if expiry_text:
+                            try:
+                                # Parse date in MM/DD/YYYY format
+                                expiry_date = datetime.strptime(expiry_text, "%m/%d/%Y").date()
+                                if expiry_date < today:
+                                    self.logger.info(f"Report expired: {expiry_text}")
+                                    continue
+                                self.logger.info(f"Report not expired: {expiry_text}")
+                            except ValueError:
+                                self.logger.warning(f"Could not parse expiry date: {expiry_text}")
+
+                    # Check for download link (the date should be a hyperlink)
+                    download_link = item.locator("xpath=.//h3//a[contains(@href, 'downloadExtractFile')]")
+                    if download_link.count() == 0:
+                        self.logger.info("No download link found for this report")
+                        continue
+
+                    self.logger.info("Found valid completed BCR report with download link")
+                    return {"status": "completed", "download_element": download_link.first}
+
+                except Exception as item_error:
+                    self.logger.warning(f"Error processing list item {i}: {str(item_error)}")
+                    continue
+
+            if pending_found:
+                return {"status": "pending", "download_element": None}
+
+            return {"status": "not_found", "download_element": None}
+
+        except Exception as e:
+            self.logger.error(f"Error searching for BCR report: {str(e)}")
+            return {"status": "not_found", "download_element": None}
+
+    def _generate_new_bcr_report(self, account_number: str) -> bool:
+        """Generates a new BCR report by selecting account and clicking Run Report."""
+        try:
+            self.logger.info("Generating new BCR report...")
+
+            # Select account number via iframe
+            self.logger.info(f"Selecting account number: {account_number}")
+            if not self._select_account_number_via_iframe(account_number):
+                self.logger.error(f"Failed to select account number: {account_number}")
+                return False
+            time.sleep(2)
+
+            # Click Run Report button
+            self.logger.info("Clicking Run Report...")
+            if not self._click_run_report():
+                self.logger.error("Failed to click Run Report")
+                return False
+            time.sleep(3)
+
+            # Close the modal that appears
+            self._close_bcr_report_modal()
+            time.sleep(2)
+
+            self.logger.info("New BCR report generation initiated")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error generating new BCR report: {str(e)}")
+            return False
+
+    def _close_bcr_report_modal(self) -> None:
+        """Closes the modal that appears after clicking Run Report for BCR."""
+        try:
+            self.logger.info("Attempting to close BCR report modal...")
+            page = self.browser_wrapper.page
+
+            # The modal is inside an iframe, try to close it
+            iframe_selector = '#TB_iframeContent'
+            iframe_locator = page.locator(iframe_selector)
+
+            if iframe_locator.count() > 0:
+                # Try to click close button inside iframe
+                frame = page.frame_locator(iframe_selector)
+                close_button = frame.locator("xpath=//*[@id='TB_closeWindowButton']")
+
+                if close_button.count() > 0:
+                    close_button.click()
+                    time.sleep(1)
+                    self.logger.info("Modal closed via iframe close button")
+                    return
+
+            # Try clicking close button in main page (outside iframe)
+            close_selectors = [
+                '//*[@id="TB_closeWindowButton"]',
+                '//a[@id="TB_closeWindowButton"]',
+                '#TB_closeWindowButton',
+            ]
+
+            for selector in close_selectors:
+                try:
+                    if selector.startswith('//') or selector.startswith('/'):
+                        locator = page.locator(f"xpath={selector}")
+                    else:
+                        locator = page.locator(selector)
+
+                    if locator.count() > 0 and locator.is_visible():
+                        locator.click()
+                        time.sleep(1)
+                        self.logger.info(f"Modal closed using selector: {selector}")
+                        return
+                except Exception:
+                    continue
+
+            # Fallback: try pressing Escape key
+            self.logger.info("Trying Escape key to close modal...")
+            page.keyboard.press("Escape")
+            time.sleep(1)
+
+        except Exception as e:
+            self.logger.warning(f"Could not close BCR modal: {str(e)}")
+
+    def _download_bcr_from_link(
+        self,
+        download_element: Any,
+        billing_cycle: BillingCycle,
+        file_map: Dict[str, BillingCycleFile],
+    ) -> Optional[FileDownloadInfo]:
+        """Downloads the BCR report by clicking the download link and processing the ZIP."""
+        try:
+            self.logger.info("Downloading BCR report from link...")
+            page = self.browser_wrapper.page
+
+            # Click the download link and expect download
+            with page.expect_download(timeout=120000) as download_info:
+                download_element.click()
+
+            download = download_info.value
+            suggested_filename = download.suggested_filename
+
+            os.makedirs(self.job_downloads_dir, exist_ok=True)
+            zip_file_path = os.path.join(self.job_downloads_dir, suggested_filename)
+
+            download.save_as(zip_file_path)
+            self.logger.info(f"BCR ZIP downloaded: {zip_file_path}")
+            time.sleep(2)
+
+            # Process the ZIP file to create the final XLSX
+            final_xlsx_path = self._process_bcr_zip(zip_file_path)
+
+            if not final_xlsx_path:
+                self.logger.error("Failed to process BCR ZIP file")
+                return None
+
+            actual_filename = os.path.basename(final_xlsx_path)
+            corresponding_bcf = file_map.get(RogersFileSlug.BALANCE_REMAINING.value)
+
+            file_info = FileDownloadInfo(
+                file_id=corresponding_bcf.id if corresponding_bcf else 0,
+                file_name=actual_filename,
+                download_url="N/A",
+                file_path=final_xlsx_path,
+                billing_cycle_file=corresponding_bcf,
+            )
+
+            if corresponding_bcf:
+                self.logger.info(f"MAPPING CONFIRMED: {actual_filename} -> BillingCycleFile ID {corresponding_bcf.id}")
+
+            return file_info
+
+        except Exception as e:
+            self.logger.error(f"Error downloading BCR from link: {str(e)}")
+            return None
+
+    def _process_bcr_zip(self, zip_file_path: str) -> Optional[str]:
+        """Processes the BCR ZIP file: extracts TXT headers and Excel data, combines into new XLSX.
+
+        The ZIP contains:
+        - A TXT file with headers
+        - An Excel file with data (no headers)
+
+        Returns the path to the generated XLSX file.
+        """
+        try:
+            self.logger.info(f"Processing BCR ZIP file: {zip_file_path}")
+
+            # Create extraction directory
+            extract_dir = os.path.join(self.job_downloads_dir, "bcr_extract")
+            os.makedirs(extract_dir, exist_ok=True)
+
+            # Extract ZIP
+            with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+                zip_ref.extractall(extract_dir)
+
+            # Find TXT and Excel files
+            txt_file = None
+            excel_file = None
+
+            for filename in os.listdir(extract_dir):
+                file_path = os.path.join(extract_dir, filename)
+                if filename.lower().endswith('.txt'):
+                    txt_file = file_path
+                    self.logger.info(f"Found TXT file: {filename}")
+                elif filename.lower().endswith(('.xlsx', '.xls')):
+                    excel_file = file_path
+                    self.logger.info(f"Found Excel file: {filename}")
+
+            if not txt_file or not excel_file:
+                self.logger.error(f"Could not find both TXT and Excel files in ZIP. TXT: {txt_file}, Excel: {excel_file}")
+                return None
+
+            # Read headers from TXT file
+            with open(txt_file, 'r', encoding='utf-8', errors='ignore') as f:
+                first_line = f.readline().strip()
+                # Headers are tab-separated
+                headers = first_line.split('\t')
+                self.logger.info(f"Headers from TXT: {headers}")
+
+            # Read data from Excel file (no headers)
+            df = pd.read_excel(excel_file, header=None, engine='openpyxl')
+            self.logger.info(f"Read {len(df)} rows from Excel")
+
+            # Assign headers to dataframe
+            if len(headers) == len(df.columns):
+                df.columns = headers
+            else:
+                self.logger.warning(f"Header count ({len(headers)}) doesn't match column count ({len(df.columns)})")
+                # Try to use as many headers as we have columns
+                df.columns = headers[:len(df.columns)] if len(headers) > len(df.columns) else headers + [f"Column_{i}" for i in range(len(headers), len(df.columns))]
+
+            # Generate output filename
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"rogers_bcr_hardware_upgrade_{timestamp}.xlsx"
+            output_path = os.path.join(self.job_downloads_dir, output_filename)
+
+            # Save to XLSX
+            df.to_excel(output_path, index=False, engine='openpyxl')
+            self.logger.info(f"BCR XLSX generated: {output_path}")
+
+            # Cleanup: remove extracted files and original ZIP
+            try:
+                shutil.rmtree(extract_dir)
+                os.remove(zip_file_path)
+                self.logger.info("Cleaned up temporary files")
+            except Exception as cleanup_error:
+                self.logger.warning(f"Could not cleanup temp files: {str(cleanup_error)}")
+
+            return output_path
+
+        except Exception as e:
+            self.logger.error(f"Error processing BCR ZIP: {str(e)}")
+            return None
+
+    def _refresh_reports_page(self) -> None:
+        """Refreshes the reports page."""
+        try:
+            self.logger.info("Refreshing reports page...")
+            self.browser_wrapper.goto("https://bss.rogers.com/bizonline/prm-reports.do")
+            self.browser_wrapper.wait_for_page_load()
+            time.sleep(3)
+            self.logger.info("Reports page refreshed")
+        except Exception as e:
+            self.logger.error(f"Error refreshing reports page: {str(e)}")

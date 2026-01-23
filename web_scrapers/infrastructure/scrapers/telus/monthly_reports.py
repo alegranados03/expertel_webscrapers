@@ -592,20 +592,19 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         Configures Date Range filter in Telus IQ.
         Flow:
         1. Click on CIDPendingDataDropdownButton to open menu
-        2. Select directly by value in bmtype_data (Select2)
+        2. Iterate options in bmtype_data to find one matching year/month pattern
         3. Click on btnApply to confirm
 
-        Value follows pattern bYYYYMM21 (always day 21)
-        Example: for November 2025 -> b20251121
+        Value pattern: bYYYYMMDD - we search for options starting with bYYYYMM
         """
         try:
             target_month = billing_cycle.end_date.month
             target_year = billing_cycle.end_date.year
-            # Build value directly: bYYYYMM21 (always day 21)
-            target_value = f"b{target_year}{target_month:02d}21"
-            target_date_text = f"{target_month:02d}-21-{target_year} statement"
+            # Pattern to search: bYYYYMM (without day)
+            target_pattern = f"b{target_year}{target_month:02d}"
 
-            self.logger.info(f"Configuring Date Range filter for: {target_date_text} (value={target_value})")
+            self.logger.info(f"Configuring Date Range filter for: {target_month:02d}/{target_year}")
+            self.logger.info(f"Searching for options starting with: {target_pattern}")
 
             # 1. Click on Date Range dropdown button to open menu
             date_button_xpath = "//*[@id='CIDPendingDataDropdownButton']"
@@ -613,10 +612,16 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             self.browser_wrapper.click_element(date_button_xpath)
             time.sleep(2)
 
-            # 2. Select directly by value (Select2 component)
+            # 2. Find matching option by iterating through all options
             bmtype_select_xpath = "//*[@id='bmtype_data']"
-            self.logger.info(f"Selecting by value: {target_value}")
-            self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, target_value)
+            matching_value = self._find_matching_date_option(bmtype_select_xpath, target_pattern)
+
+            if not matching_value:
+                self.logger.error(f"No option found matching pattern: {target_pattern}")
+                return False
+
+            self.logger.info(f"Found matching option: {matching_value}")
+            self.browser_wrapper.select_dropdown_by_value(bmtype_select_xpath, matching_value)
             time.sleep(1)
 
             # 3. Click OK to apply
@@ -624,12 +629,51 @@ class TelusMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self.logger.error("Error applying Date Range (OK button)")
                 return False
 
-            self.logger.info(f"Date Range configured successfully: {target_date_text}")
+            self.logger.info(f"Date Range configured successfully for {target_month:02d}/{target_year}")
             return True
 
         except Exception as e:
             self.logger.error(f"Error configuring Date Range filter: {str(e)}")
             return False
+
+    def _find_matching_date_option(self, select_xpath: str, pattern: str) -> Optional[str]:
+        """
+        Iterates through SELECT options to find one matching the year/month pattern.
+
+        Args:
+            select_xpath: XPath of the SELECT element
+            pattern: Pattern to match (e.g., 'b202511' for November 2025)
+
+        Returns:
+            The value of the matching option, or None if not found.
+        """
+        try:
+            page = self.browser_wrapper.page
+
+            # Get all options from the SELECT
+            options = page.query_selector_all(f"xpath={select_xpath}//option")
+            self.logger.info(f"Found {len(options)} options in dropdown")
+
+            for option in options:
+                value = option.get_attribute("value")
+                text = option.inner_text().strip() if option else ""
+
+                if value and value.startswith(pattern):
+                    self.logger.info(f"Match found: value='{value}', text='{text}'")
+                    return value
+
+            # Log available options for debugging
+            self.logger.warning(f"No match found for pattern '{pattern}'. Available options:")
+            for option in options[:10]:  # Log first 10 options
+                value = option.get_attribute("value")
+                text = option.inner_text().strip() if option else ""
+                self.logger.warning(f"  - value='{value}', text='{text}'")
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error finding matching date option: {str(e)}")
+            return None
 
     def _click_date_range_ok_button(self) -> bool:
         """Click on OK/Apply button to confirm date selection."""
