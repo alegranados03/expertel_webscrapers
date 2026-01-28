@@ -335,6 +335,11 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
         iframe_selector = '#TB_iframeContent'
         page = self.browser_wrapper.page
 
+        # Normalizar número de cuenta: remover guiones para búsqueda
+        # Ejemplo: "8-7424-0153" -> "874240153"
+        account_number_normalized = account_number.replace("-", "")
+        self.logger.info(f"Account number normalized: '{account_number}' -> '{account_number_normalized}'")
+
         try:
             # Click on Account Numbers link to open iframe
             account_numbers_link_xpath = '//*[@id="accountNumbersLink"]'
@@ -368,15 +373,15 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
                 self._close_iframe_modal()
                 return False
 
-            # Enter account number using keyboard.type() to trigger input events
+            # Enter account number (normalized, without hyphens) using keyboard.type() to trigger input events
             search_field_xpath = '//*[@id="searchField1"]'
-            self.logger.info(f"Entering account number: {account_number}")
+            self.logger.info(f"Entering account number: {account_number_normalized}")
             search_field = frame.locator(f"xpath={search_field_xpath}")
             if search_field.count() > 0:
                 search_field.click()
                 time.sleep(0.3)
                 search_field.fill("")  # Clear first
-                search_field.type(account_number, delay=50)  # Type character by character
+                search_field.type(account_number_normalized, delay=50)  # Type character by character
                 time.sleep(0.5)
                 # Trigger blur to activate Find button
                 search_field.blur()
@@ -403,23 +408,31 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
 
             # Find the list item containing the account number and click Select
             # The structure is: li > span.rowCTN > strong with account number, and span > a with "Select"
-            select_button = frame.locator(f"//li[.//strong[contains(text(), '{account_number}')]]//a[contains(@class, 'buttongray')]")
+            # Use normalized account number for search (portal may display with or without hyphens)
+            select_button = frame.locator(f"//li[.//strong[contains(text(), '{account_number_normalized}')]]//a[contains(@class, 'buttongray')]")
 
             if select_button.count() > 0:
-                self.logger.info(f"Found account {account_number}, clicking Select...")
+                self.logger.info(f"Found account {account_number_normalized}, clicking Select...")
                 select_button.click()
                 time.sleep(2)
             else:
-                # Try alternative: click on any Select button if account is in the list
-                self.logger.info("Trying alternative selector for Select button...")
-                select_button_alt = frame.locator("//a[.//span[text()='Select']]")
-                if select_button_alt.count() > 0:
-                    select_button_alt.first.click()
+                # Try with original account number (with hyphens)
+                select_button_original = frame.locator(f"//li[.//strong[contains(text(), '{account_number}')]]//a[contains(@class, 'buttongray')]")
+                if select_button_original.count() > 0:
+                    self.logger.info(f"Found account {account_number}, clicking Select...")
+                    select_button_original.click()
                     time.sleep(2)
                 else:
-                    self.logger.error("Select button not found in iframe")
-                    self._close_iframe_modal()
-                    return False
+                    # Try alternative: click on any Select button if account is in the list
+                    self.logger.info("Trying alternative selector for Select button...")
+                    select_button_alt = frame.locator("//a[.//span[text()='Select']]")
+                    if select_button_alt.count() > 0:
+                        select_button_alt.first.click()
+                        time.sleep(2)
+                    else:
+                        self.logger.error("Select button not found in iframe")
+                        self._close_iframe_modal()
+                        return False
 
             self.logger.info("Account number selected successfully")
             return True
@@ -1081,11 +1094,12 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             return None
 
     def _process_bcr_zip(self, zip_file_path: str) -> Optional[str]:
-        """Processes the BCR ZIP file: extracts TXT headers and Excel data, combines into new XLSX.
+        """Processes the BCR ZIP file: extracts TXT headers and CSV data, combines into new XLSX.
 
         The ZIP contains:
-        - A TXT file with headers
-        - An Excel file with data (no headers)
+        - Header-Wireless.txt: Line 1 = metadata (e.g. "Custom Type : 11/24/2025 - 12/23/2025"),
+          Line 2 = empty, Lines 3+ = "HeaderName,width,type" (e.g. "Billing Account,9,Text")
+        - Wireless.csv: Comma-separated data rows without headers
 
         Returns the path to the generated XLSX file.
         """
@@ -1100,40 +1114,48 @@ class RogersMonthlyReportsScraperStrategy(MonthlyReportsScraperStrategy):
             with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_dir)
 
-            # Find TXT and Excel files
+            # Find TXT (headers) and CSV (data) files
             txt_file = None
-            excel_file = None
+            csv_file = None
 
             for filename in os.listdir(extract_dir):
                 file_path = os.path.join(extract_dir, filename)
                 if filename.lower().endswith('.txt'):
                     txt_file = file_path
                     self.logger.info(f"Found TXT file: {filename}")
-                elif filename.lower().endswith(('.xlsx', '.xls')):
-                    excel_file = file_path
-                    self.logger.info(f"Found Excel file: {filename}")
+                elif filename.lower().endswith('.csv'):
+                    csv_file = file_path
+                    self.logger.info(f"Found CSV file: {filename}")
 
-            if not txt_file or not excel_file:
-                self.logger.error(f"Could not find both TXT and Excel files in ZIP. TXT: {txt_file}, Excel: {excel_file}")
+            if not txt_file or not csv_file:
+                self.logger.error(f"Could not find both TXT and CSV files in ZIP. TXT: {txt_file}, CSV: {csv_file}")
                 return None
 
             # Read headers from TXT file
+            # Format: Line 1 = metadata (skip), Line 2 = empty (skip),
+            # Lines 3+ = "HeaderName,width,type" → extract only HeaderName
+            headers = []
             with open(txt_file, 'r', encoding='utf-8', errors='ignore') as f:
-                first_line = f.readline().strip()
-                # Headers are tab-separated
-                headers = first_line.split('\t')
-                self.logger.info(f"Headers from TXT: {headers}")
+                lines = f.readlines()
+                for line in lines[2:]:  # Skip first 2 lines (metadata + empty)
+                    line = line.strip()
+                    if line:
+                        # Extract header name (part before first comma)
+                        header_name = line.split(',')[0].strip()
+                        if header_name:
+                            headers.append(header_name)
 
-            # Read data from Excel file (no headers)
-            df = pd.read_excel(excel_file, header=None, engine='openpyxl')
-            self.logger.info(f"Read {len(df)} rows from Excel")
+            self.logger.info(f"Headers from TXT ({len(headers)}): {headers}")
+
+            # Read data from CSV file (no headers)
+            df = pd.read_csv(csv_file, header=None, dtype=str)
+            self.logger.info(f"Read {len(df)} rows from CSV")
 
             # Assign headers to dataframe
             if len(headers) == len(df.columns):
                 df.columns = headers
             else:
                 self.logger.warning(f"Header count ({len(headers)}) doesn't match column count ({len(df.columns)})")
-                # Try to use as many headers as we have columns
                 df.columns = headers[:len(df.columns)] if len(headers) > len(df.columns) else headers + [f"Column_{i}" for i in range(len(headers), len(df.columns))]
 
             # Generate output filename
