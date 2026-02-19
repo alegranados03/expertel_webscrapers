@@ -2,7 +2,7 @@
 ScraperJobService - Service for managing ScraperJobs with available_at support
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from django.db import transaction
@@ -25,7 +25,7 @@ from web_scrapers.domain.entities.models import (
     ScraperStatistics,
     Workspace,
 )
-from web_scrapers.domain.enums import FileStatus, ScraperJobStatus
+from web_scrapers.domain.enums import FileStatus, ScraperJobStatus, ScraperType
 from web_scrapers.infrastructure.django.models import ScraperJob as DjangoScraperJob
 from web_scrapers.infrastructure.django.repositories import (
     AccountRepository,
@@ -45,6 +45,13 @@ from web_scrapers.infrastructure.django.repositories import (
 
 class ScraperJobService:
     """Service for managing ScraperJobs with intelligent fetch based on available_at"""
+
+    # Retry delay configuration by scraper type
+    RETRY_DELAYS = {
+        ScraperType.MONTHLY_REPORTS: {"days": 1, "hour": 6},  # 1 day, at 6:00 AM
+        ScraperType.PDF_INVOICE: {"days": 1, "hour": 6},  # 1 day, at 6:00 AM
+        ScraperType.DAILY_USAGE: {"hours": 1},  # 1 hour from now
+    }
 
     def __init__(self):
         # Initialize all repositories needed to build complete structures
@@ -308,3 +315,193 @@ class ScraperJobService:
             django_job.completed_at = timezone.now()
 
         django_job.save()
+
+    def handle_job_result(
+        self,
+        scraper_job_id: int,
+        success: bool,
+        error_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Handle the result of a job execution with retry logic.
+
+        Logic:
+        - SUCCESS: Mark as SUCCESS, completed_at = now, no more executions
+        - FAIL + retry_count < max_retries:
+            - retry_count += 1
+            - status = PENDING (to be picked up again)
+            - available_at = calculated based on scraper type:
+                - MONTHLY_REPORTS: tomorrow 6:00 AM
+                - PDF_INVOICE: tomorrow 6:00 AM
+                - DAILY_USAGE: 1 hour from now
+            - Log error with retry information
+        - FAIL + retry_count >= max_retries:
+            - status = ERROR (final)
+            - completed_at = now
+            - Log indicating max retries reached
+
+        Args:
+            scraper_job_id: Job ID
+            success: True if job was successful, False if it failed
+            error_message: Error message or additional information
+
+        Returns:
+            Dict with result information:
+            {
+                'job_id': int,
+                'final_status': str,
+                'retry_scheduled': bool,
+                'retry_count': int,
+                'next_available_at': datetime or None,
+                'message': str
+            }
+        """
+        django_job = DjangoScraperJob.objects.get(id=scraper_job_id)
+        current_time = timezone.now()
+        result = {
+            "job_id": scraper_job_id,
+            "retry_scheduled": False,
+            "retry_count": django_job.retry_count,
+            "next_available_at": None,
+        }
+
+        if success:
+            # Job successful - mark as SUCCESS
+            django_job.status = ScraperJobStatus.SUCCESS
+            django_job.completed_at = current_time
+
+            log_message = "SUCCESS: Job completed successfully"
+            if error_message:
+                log_message = f"SUCCESS: {error_message}"
+
+            self._append_log(django_job, log_message)
+
+            result["final_status"] = ScraperJobStatus.SUCCESS
+            result["message"] = "Job completed successfully"
+
+        else:
+            # Job failed - check if it can retry
+            if django_job.retry_count < django_job.max_retries:
+                # Can retry - calculate next available_at based on scraper type
+                django_job.retry_count += 1
+                django_job.status = ScraperJobStatus.PENDING
+
+                # Get scraper type and calculate appropriate delay
+                try:
+                    scraper_type = ScraperType(django_job.type)
+                except ValueError:
+                    # Safe fallback if type is not recognized
+                    scraper_type = ScraperType.MONTHLY_REPORTS
+                    self._append_log(
+                        django_job,
+                        f"WARNING: Unknown scraper type '{django_job.type}', using default delay",
+                    )
+
+                django_job.available_at = self._get_retry_available_at(scraper_type)
+
+                log_message = (
+                    f"RETRY SCHEDULED ({django_job.retry_count}/{django_job.max_retries}): "
+                    f"{error_message or 'Unknown error'}. "
+                    f"Next attempt: {django_job.available_at.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                self._append_log(django_job, log_message)
+
+                result["final_status"] = ScraperJobStatus.PENDING
+                result["retry_scheduled"] = True
+                result["retry_count"] = django_job.retry_count
+                result["next_available_at"] = django_job.available_at
+                result["message"] = f"Retry {django_job.retry_count}/{django_job.max_retries} scheduled"
+
+            else:
+                # Max retries reached - mark as final ERROR
+                django_job.status = ScraperJobStatus.ERROR
+                django_job.completed_at = current_time
+
+                log_message = (
+                    f"ERROR FINAL (max retries {django_job.max_retries} reached): "
+                    f"{error_message or 'Unknown error'}"
+                )
+                self._append_log(django_job, log_message)
+
+                result["final_status"] = ScraperJobStatus.ERROR
+                result["message"] = f"Max retries reached ({django_job.max_retries}). Job marked as ERROR."
+
+        django_job.save()
+        return result
+
+    def _get_retry_available_at(self, scraper_type: ScraperType) -> datetime:
+        """
+        Calculate the date/time of the next retry based on scraper type.
+
+        Args:
+            scraper_type: Type of scraper (MONTHLY_REPORTS, PDF_INVOICE, DAILY_USAGE)
+
+        Returns:
+            datetime: Date/time of the next retry
+
+        Delays by type:
+            - MONTHLY_REPORTS: 1 day (tomorrow at 6:00 AM)
+            - PDF_INVOICE: 1 day (tomorrow at 6:00 AM)
+            - DAILY_USAGE: 1 hour from now
+        """
+        now = timezone.now()
+        delay_config = self.RETRY_DELAYS.get(scraper_type, {"days": 1, "hour": 6})
+
+        if "hours" in delay_config:
+            # Delay in hours (for DAILY_USAGE)
+            return now + timedelta(hours=delay_config["hours"])
+        else:
+            # Delay in days with specific hour (for MONTHLY_REPORTS and PDF_INVOICE)
+            days = delay_config.get("days", 1)
+            hour = delay_config.get("hour", 6)
+            next_date = now + timedelta(days=days)
+            return next_date.replace(hour=hour, minute=0, second=0, microsecond=0)
+
+    def _append_log(self, django_job, message: str, max_message_length: int = 500) -> None:
+        """
+        Append a message to the job log with timestamp.
+
+        Args:
+            django_job: Django ScraperJob model instance
+            message: Message to append to the log
+            max_message_length: Maximum message length before truncation
+        """
+        if len(message) > max_message_length:
+            message = message[:max_message_length] + "... [truncated]"
+
+        timestamp = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_entry = f"[{timestamp}] {message}"
+
+        if django_job.log:
+            django_job.log = f"{django_job.log}\n{new_entry}"
+        else:
+            django_job.log = new_entry
+
+    def get_job_retry_info(self, scraper_job_id: int) -> Dict[str, Any]:
+        """
+        Get information about the retry status of a job.
+
+        Args:
+            scraper_job_id: Job ID
+
+        Returns:
+            Dict with retry information:
+            {
+                'job_id': int,
+                'retry_count': int,
+                'max_retries': int,
+                'retries_remaining': int,
+                'can_retry': bool,
+                'status': str
+            }
+        """
+        django_job = DjangoScraperJob.objects.get(id=scraper_job_id)
+
+        return {
+            "job_id": scraper_job_id,
+            "retry_count": django_job.retry_count,
+            "max_retries": django_job.max_retries,
+            "retries_remaining": max(0, django_job.max_retries - django_job.retry_count),
+            "can_retry": django_job.retry_count < django_job.max_retries,
+            "status": django_job.status,
+        }

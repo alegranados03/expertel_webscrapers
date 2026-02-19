@@ -43,6 +43,18 @@ class ScraperJobProcessor:
             f"{stats.total_pending} total pending"
         )
 
+    def _log_retry_result(self, job_id: int, handle_result: dict) -> None:
+        """Log information about retry scheduling"""
+        if handle_result.get("retry_scheduled"):
+            next_at = handle_result.get("next_available_at")
+            next_at_str = next_at.strftime("%Y-%m-%d %H:%M:%S") if next_at else "unknown"
+            self.logger.warning(
+                f"Job {job_id} failed. {handle_result['message']}. "
+                f"Next attempt scheduled for: {next_at_str}"
+            )
+        else:
+            self.logger.error(f"Job {job_id} failed permanently. {handle_result['message']}")
+
     def process_scraper_job(self, job_context: ScraperJobCompleteContext, job_number: int, total_jobs: int) -> bool:
         """
         Process a single scraper job.
@@ -135,25 +147,37 @@ class ScraperJobProcessor:
                 self.logger.info(f"Scraper executed successfully: {result.message}")
                 self.logger.info(f"Files processed: {len(result.files)}")
 
-                self.scraper_job_service.update_scraper_job_status(
-                    scraper_job.id, ScraperJobStatus.SUCCESS, f"Scraper executed successfully: {result.message}"
+                # Handle successful result
+                handle_result = self.scraper_job_service.handle_job_result(
+                    scraper_job.id,
+                    success=True,
+                    error_message=f"Scraper executed successfully: {result.message}",
                 )
+                self.logger.info(f"Job {scraper_job.id}: {handle_result['message']}")
+                return True
             else:
                 self.logger.error(f"Scraper execution failed: {result.error}")
-                self.scraper_job_service.update_scraper_job_status(
-                    scraper_job.id, ScraperJobStatus.ERROR, f"Scraper execution failed: {result.error}"
-                )
-                return False
 
-            return True
+                # Handle failed result - may schedule retry
+                handle_result = self.scraper_job_service.handle_job_result(
+                    scraper_job.id,
+                    success=False,
+                    error_message=f"Scraper execution failed: {result.error}",
+                )
+                self._log_retry_result(scraper_job.id, handle_result)
+                return False
 
         except Exception as e:
             error_msg = f"Error processing scraper: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
 
-            # Update status to ERROR
-            self.scraper_job_service.update_scraper_job_status(scraper_job.id, ScraperJobStatus.ERROR, error_msg)
-
+            # Handle exception - may schedule retry
+            handle_result = self.scraper_job_service.handle_job_result(
+                scraper_job.id,
+                success=False,
+                error_message=error_msg,
+            )
+            self._log_retry_result(scraper_job.id, handle_result)
             return False
 
     def execute_available_scrapers(self) -> None:

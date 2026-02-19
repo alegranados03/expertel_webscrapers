@@ -292,6 +292,8 @@ class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
             log=model.log,
             completed_at=model.completed_at,
             available_at=model.available_at,
+            retry_count=model.retry_count,
+            max_retries=model.max_retries,
         )
 
     def to_orm_model(self, entity: ScraperJobEntity) -> ScraperJob:
@@ -304,6 +306,8 @@ class ScraperJobRepository(DjangoFullRepository[ScraperJobEntity, ScraperJob]):
             log=entity.log,
             completed_at=entity.completed_at,
             available_at=entity.available_at,
+            retry_count=entity.retry_count,
+            max_retries=entity.max_retries,
         )
 
 

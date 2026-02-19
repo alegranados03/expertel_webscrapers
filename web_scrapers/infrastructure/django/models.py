@@ -174,6 +174,8 @@ class ScraperJob(models.Model):
     log = models.TextField(blank=True, null=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     available_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    retry_count = models.IntegerField(default=0)
+    max_retries = models.IntegerField(default=3)
 
     class Meta:
         db_table = "scraper_jobs"

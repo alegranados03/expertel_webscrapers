@@ -175,8 +175,18 @@ class ScraperJob(BaseModel):
     log: Optional[str] = None
     completed_at: Optional[datetime] = None
     available_at: Optional[datetime] = None
+    retry_count: int = 0  # Number of retry attempts performed
+    max_retries: int = 3  # Maximum retry attempts allowed
 
     model_config = {"from_attributes": True}
+
+    def can_retry(self) -> bool:
+        """Check if the job can be retried."""
+        return self.retry_count < self.max_retries
+
+    def retries_remaining(self) -> int:
+        """Return the number of retries remaining."""
+        return max(0, self.max_retries - self.retry_count)
 
 
 # Filters for each entity
